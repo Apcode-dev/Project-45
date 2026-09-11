@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  # MongoDB 7.0 Document Database
+  mongodb:
+    image: mongo:7.0
+    container_name: mis-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=medical_inventory
+
+  # Node.js + Express + TypeScript API Server
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: mis-backend
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/medical_inventory
+      - JWT_SECRET=mis_enterprise_super_secret_jwt_key_2026_!@#$
+      - JWT_EXPIRES_IN=24h
+    depends_on:
+      - mongodb
+
+  # Vite + React 19 Frontend Web SPA
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: mis-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
+    driver: local
