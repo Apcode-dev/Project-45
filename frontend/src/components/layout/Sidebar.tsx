@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navContent = (
     <>
-      <div className="p-3 space-y-5 overflow-y-auto flex-1">
+      <div className="p-3 space-y-5 overflow-y-auto sidebar-scroll flex-1">
         {navSections.map((section, idx) => (
           <div key={idx} className="space-y-1">
             <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -158,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* 1. Desktop Persistent Sidebar (Hidden on mobile/tablet) */}
-      <aside className="hidden lg:flex w-64 bg-slate-900 text-slate-300 min-h-[calc(100vh-4rem)] flex-col justify-between select-none border-r border-slate-800 shrink-0">
+      <aside className="hidden lg:flex w-64 bg-slate-900 text-slate-300 h-full max-h-full flex-col justify-between select-none border-r border-slate-800 shrink-0 overflow-hidden">
         {navContent}
       </aside>
 
@@ -172,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
 
           {/* Drawer Body */}
-          <aside className="relative w-72 max-w-[85vw] bg-slate-900 text-slate-300 h-full flex flex-col justify-between shadow-2xl z-50 border-r border-slate-800 select-none">
+          <aside className="relative w-72 max-w-[85vw] bg-slate-900 text-slate-300 h-full max-h-full flex flex-col justify-between shadow-2xl z-50 border-r border-slate-800 select-none overflow-hidden">
             {/* Drawer Header */}
             <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2.5">

@@ -68,16 +68,16 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col w-full overflow-x-hidden">
-      {/* Top Navigation */}
+    <div className="h-screen max-h-screen flex flex-col w-full overflow-hidden bg-slate-50">
+      {/* Top Navigation (Fixed at top) */}
       <Navbar 
         onModuleChange={(mod) => handleNavigate(mod)} 
         isMobileOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Modular Sidebar (Desktop Persistent & Mobile Drawer) */}
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Left Modular Sidebar (Desktop Persistent & Mobile Drawer - Scrolls within itself only if needed) */}
         <Sidebar
           activeModule={activeModule}
           onSelectModule={(mod) => handleNavigate(mod)}
@@ -86,8 +86,8 @@ export function App() {
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-8 pb-24 lg:pb-8 bg-slate-50 w-full min-w-0">
+        {/* Main Content Area (Scrolls independently) */}
+        <main className="flex-1 h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-5 lg:p-8 pb-24 lg:pb-8 bg-slate-50">
           <div className="max-w-7xl mx-auto w-full">
             {renderModuleContent()}
           </div>
