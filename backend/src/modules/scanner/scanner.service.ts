@@ -332,44 +332,66 @@ export class ScannerService {
     let aiResult: any = null;
 
     if (geminiKey) {
-      try {
-        const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: `Extract medicine label details from this image.
-Keys required in JSON output:
-1. "batchNumber": string (e.g. ST25G9253 or JKFL260003)
-2. "mfgDate": string in YYYY-MM-DD format (or null if not found)
-3. "expDate": string in YYYY-MM-DD format (or null if not found)
-4. "mrp": number (or null if not found)
-Return ONLY raw JSON.`
-                    },
-                    {
-                      inline_data: {
-                        mime_type: "image/jpeg",
-                        data: cleanBase64
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      // List of candidate models in order of priority for high availability
+      const candidateModels = [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-lite-latest"
+      ];
+
+      for (const modelName of candidateModels) {
+        try {
+          console.log(`[ScannerService] Calling Gemini Vision API (${modelName})...`);
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      {
+                        text: `You are an expert pharmaceutical OCR assistant. Read this medicine strip/box image carefully.
+Extract the details printed on the medicine label:
+1. "batchNumber": string - The Batch Number / Lot Code (e.g. FXT016003AS, ST25G9253). Omit words like B.No, Batch No, Lot No.
+2. "mfgDate": string in YYYY-MM-DD format (or null if missing). Convert month names e.g., MAR. 2026 -> 2026-03-01.
+3. "expDate": string in YYYY-MM-DD format (or null if missing). Convert month names e.g., FEB. 2029 -> 2029-02-01.
+4. "mrp": number - Maximum Retail Price (or null if missing). E.g. for "₹275.00", return 275.00.
+
+Return ONLY raw JSON with keys: "batchNumber", "mfgDate", "expDate", "mrp". No explanation, no markdown backticks.`
+                      },
+                      {
+                        inline_data: {
+                          mime_type: "image/jpeg",
+                          data: cleanBase64
+                        }
                       }
-                    }
-                  ]
-                }
-              ]
-            })
+                    ]
+                  }
+                ]
+              })
+            }
+          );
+
+          if (!response.ok) {
+            const errTxt = await response.text();
+            console.warn(`[ScannerService] Gemini Vision API (${modelName}) returned status ${response.status}:`, errTxt.substring(0, 200));
+            continue; // try next fallback model
           }
-        );
-        const resJson = (await response.json()) as any;
-        const text = resJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        aiResult = JSON.parse(cleanJson);
-      } catch (e) {
-        console.warn("[ScannerService] Gemini Vision API Error:", e);
+
+          const resJson = (await response.json()) as any;
+          const text = resJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const cleanJson = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+          aiResult = JSON.parse(cleanJson);
+          console.log(`[ScannerService] ✅ Gemini Vision (${modelName}) extracted:`, aiResult);
+          if (aiResult) break; // Success!
+        } catch (e) {
+          console.warn(`[ScannerService] Gemini Vision (${modelName}) Error:`, e);
+        }
       }
     } else if (openaiKey) {
       try {
@@ -402,17 +424,17 @@ Return ONLY raw JSON.`
       }
     }
 
-    if (!aiResult || (!aiResult.batchNumber && !aiResult.rawText)) {
+    if (!aiResult) {
       return { aiEnabled: false };
     }
 
     const searchCode = aiResult.batchNumber || aiResult.rawText || "";
-    const lookup = await this.lookupCode(searchCode);
+    const lookup = searchCode ? await this.lookupCode(searchCode) : { found: false, code: "", extractedInfo: {} };
 
     return {
       ...lookup,
       aiEnabled: true,
-      provider: geminiKey ? "Gemini 1.5 Flash Vision" : "ChatGPT GPT-4o-mini Vision",
+      provider: geminiKey ? "Gemini 3.6 Flash Vision" : "ChatGPT GPT-4o-mini Vision",
       extractedInfo: {
         rawCode: searchCode,
         batchNumber: aiResult.batchNumber || lookup.extractedInfo?.batchNumber || "",
@@ -425,3 +447,4 @@ Return ONLY raw JSON.`
 }
 
 export const scannerService = new ScannerService();
+
