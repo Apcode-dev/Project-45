@@ -1,7 +1,11 @@
 import { MedicineModel } from "../../database/models/Medicine.js";
 import { MedicineCodeModel } from "../../database/models/MedicineCode.js";
 import { BatchModel } from "../../database/models/Batch.js";
+import { SaleModel } from "../../database/models/Sale.js";
+import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
+import { AlertModel } from "../../database/models/Alert.js";
 import { createAuditLog } from "../../middleware/audit.js";
+import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
 
 export interface MedicineFilterOptions {
   search?: string;
@@ -221,6 +225,8 @@ export class MedicinesService {
       details: { name: medicine.name },
     });
 
+    await syncInventoryAlerts().catch(() => {});
+
     return await this.getMedicineById(medicine._id.toString());
   }
 
@@ -228,17 +234,45 @@ export class MedicinesService {
     const medicine = await MedicineModel.findById(id);
     if (!medicine) throw new Error("Medicine not found");
 
-    // Soft delete / deactivate to preserve historical transaction integrity
-    medicine.isActive = false;
-    await medicine.save();
+    // Check if this medicine has been sold in historical sales
+    const hasSales = await SaleModel.exists({ "items.medicineId": id });
 
-    await createAuditLog("DEACTIVATE_MEDICINE", "MEDICINE", {
-      entityId: medicine._id.toString(),
-      userId,
-      details: { name: medicine.name },
-    });
+    if (!hasSales) {
+      // Complete permanent delete: remove barcodes, batches, transactions, alerts, and medicine
+      await Promise.all([
+        MedicineCodeModel.deleteMany({ medicineId: id }),
+        BatchModel.deleteMany({ medicineId: id }),
+        InventoryTransactionModel.deleteMany({ medicineId: id }),
+        AlertModel.deleteMany({ medicineId: id }),
+        MedicineModel.findByIdAndDelete(id),
+      ]);
 
-    return { success: true, message: `Medicine "${medicine.name}" deactivated successfully.` };
+      await createAuditLog("DELETE_MEDICINE_PERMANENT", "MEDICINE", {
+        entityId: id,
+        userId,
+        details: { name: medicine.name, note: "Permanently purged from database to keep storage clean" },
+      });
+
+      return {
+        success: true,
+        message: `Medicine "${medicine.name}" and all associated data permanently deleted from database.`,
+      };
+    } else {
+      // Preserve historical sales/tax records: deactivate medicine
+      medicine.isActive = false;
+      await medicine.save();
+
+      await createAuditLog("DEACTIVATE_MEDICINE", "MEDICINE", {
+        entityId: medicine._id.toString(),
+        userId,
+        details: { name: medicine.name, note: "Deactivated because historical sales records exist" },
+      });
+
+      return {
+        success: true,
+        message: `Medicine "${medicine.name}" has historical sales records, so it has been deactivated/archived.`,
+      };
+    }
   }
 
   async addMedicineCode(medicineId: string, codeValue: string, codeType: "BARCODE" | "QR" | "DATAMATRIX" = "BARCODE") {

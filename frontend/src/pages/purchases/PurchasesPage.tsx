@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../services/api.js";
+import { showToast } from "../../utils/toast.js";
 import {
   Truck,
   Plus,
@@ -47,7 +48,6 @@ export const PurchasesPage: React.FC = () => {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // View Details Modal
   const [viewOrder, setViewOrder] = useState<any | null>(null);
@@ -185,12 +185,11 @@ export const PurchasesPage: React.FC = () => {
 
       const res = await api.post("/purchases", payload);
       if (res.data.success) {
-        setSuccessToast(
+        showToast.success(
           directInward
             ? `Purchase ${res.data.data.poNumber} received & stock added into shelves!`
             : `Purchase Order ${res.data.data.poNumber} created successfully!`
         );
-        setTimeout(() => setSuccessToast(null), 5000);
 
         setItems([]);
         setInvoiceNumber("");
@@ -199,7 +198,9 @@ export const PurchasesPage: React.FC = () => {
         fetchOrders();
       }
     } catch (err: any) {
-      setFormError(err.response?.data?.message || "Failed to create purchase order.");
+      const errMsg = err.response?.data?.message || "Failed to create purchase order.";
+      setFormError(errMsg);
+      showToast.error(errMsg);
     } finally {
       setSubmitting(false);
     }
@@ -210,15 +211,14 @@ export const PurchasesPage: React.FC = () => {
     try {
       const res = await api.put(`/purchases/${orderId}/receive`);
       if (res.data.success) {
-        setSuccessToast("Stock inwarded and batches updated successfully!");
-        setTimeout(() => setSuccessToast(null), 4000);
+        showToast.success("Stock inwarded and batches updated successfully!");
         if (viewOrder && viewOrder._id === orderId) {
           setViewOrder(res.data.data);
         }
         fetchOrders();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to receive order.");
+      showToast.error(err.response?.data?.message || "Failed to receive order.");
     } finally {
       setReceivingId(null);
     }
@@ -226,12 +226,6 @@ export const PurchasesPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {successToast && (
-        <div className="fixed top-20 right-8 z-50 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 animate-fade-in">
-          <CheckCircle2 className="w-5 h-5" />
-          <span className="text-sm font-semibold">{successToast}</span>
-        </div>
-      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

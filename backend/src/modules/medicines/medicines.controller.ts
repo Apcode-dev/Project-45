@@ -38,7 +38,7 @@ export class MedicinesController {
   async getMedicineById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await medicinesService.getMedicineById(id);
+      const data = await medicinesService.getMedicineById(id as string);
       res.status(200).json({ success: true, data });
     } catch (err: any) {
       res.status(404).json({ success: false, error: err.message });
@@ -57,7 +57,7 @@ export class MedicinesController {
   async updateMedicine(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await medicinesService.updateMedicine(id, req.body, req.user?.id);
+      const data = await medicinesService.updateMedicine(id as string, req.body, req.user?.id);
       res.status(200).json({ success: true, data, message: "Medicine updated successfully" });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
@@ -67,8 +67,8 @@ export class MedicinesController {
   async deleteMedicine(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const result = await medicinesService.deleteMedicine(id, req.user?.id);
-      res.status(200).json({ success: true, ...result });
+      const result = await medicinesService.deleteMedicine(id as string, req.user?.id);
+      res.status(200).json(result);
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
     }
@@ -82,7 +82,7 @@ export class MedicinesController {
         res.status(400).json({ success: false, error: "Code value is required" });
         return;
       }
-      const data = await medicinesService.addMedicineCode(id, codeValue, codeType);
+      const data = await medicinesService.addMedicineCode(id as string, codeValue, codeType);
       res.status(201).json({ success: true, data, message: "Code registered successfully" });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });

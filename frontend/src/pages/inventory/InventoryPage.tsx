@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "../../services/api.js";
+import { showToast } from "../../utils/toast.js";
 import {
   Boxes,
   Search,
@@ -15,7 +16,16 @@ import {
   Layers,
   History,
   AlertCircle,
+  QrCode,
+  Camera,
+  Flashlight,
+  Sparkles,
 } from "lucide-react";
+import {
+  BrowserMultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+} from "@zxing/library";
 
 export const InventoryPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"batches" | "ledger">("batches");
@@ -35,6 +45,303 @@ export const InventoryPage: React.FC = () => {
   const [adjustSaving, setAdjustSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Camera Scanner Modal State
+  const [showScannerModal, setShowScannerModal] = useState(false);
+  const [scannerLoading, setScannerLoading] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [scanSuccessToast, setScanSuccessToast] = useState<string | null>(null);
+
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerStreamRef = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<any>(null);
+  const zxingReaderRef = useRef<any>(null);
+  const lastScannedTimeRef = useRef<number>(0);
+
+  // Web Audio API Beep on successful scan
+  const playBeep = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+      if (navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+    } catch {}
+  };
+
+  const createPosZxingReader = () => {
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.QR_CODE,
+      BarcodeFormat.DATA_MATRIX,
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.CODE_93,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+      BarcodeFormat.ITF,
+      BarcodeFormat.CODABAR,
+    ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    const reader = new BrowserMultiFormatReader(hints, 200);
+    reader.timeBetweenDecodingAttempts = 60;
+    return reader;
+  };
+
+  const stopPosCamera = () => {
+    if (scanTimerRef.current) {
+      cancelAnimationFrame(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+    if (zxingReaderRef.current) {
+      try {
+        zxingReaderRef.current.stopContinuousDecode();
+      } catch {}
+      zxingReaderRef.current = null;
+    }
+    if (scannerStreamRef.current) {
+      scannerStreamRef.current.getTracks().forEach((t: any) => t.stop());
+      scannerStreamRef.current = null;
+    }
+    if (scannerVideoRef.current) {
+      scannerVideoRef.current.srcObject = null;
+    }
+    setTorchOn(false);
+  };
+
+  const openPosScanner = () => {
+    setShowScannerModal(true);
+  };
+
+  const closePosScanner = () => {
+    stopPosCamera();
+    setShowScannerModal(false);
+  };
+
+  const startPosCamera = async (desiredFacing: "environment" | "user" = facingMode) => {
+    setScannerLoading(true);
+    setScannerError(null);
+    stopPosCamera();
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Aapka browser camera access support nahi karta. Please use Chrome, Safari or Edge.");
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: desiredFacing ? { ideal: desiredFacing } : "environment",
+            width: { ideal: 1920, min: 640 },
+            height: { ideal: 1080, min: 480 },
+          },
+          audio: false,
+        });
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: desiredFacing ? { ideal: desiredFacing } : "environment" },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+      }
+
+      scannerStreamRef.current = stream;
+
+      try {
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities ? (track.getCapabilities() as any) : {};
+        if (capabilities.focusMode && Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
+          track.applyConstraints({ advanced: [{ focusMode: "continuous" } as any] }).catch(() => {});
+        }
+        setTorchSupported(!!capabilities.torch);
+      } catch {
+        setTorchSupported(false);
+      }
+
+      const applyStream = () => {
+        const vid = scannerVideoRef.current;
+        if (vid && stream) {
+          vid.muted = true;
+          vid.setAttribute("playsinline", "true");
+          vid.setAttribute("webkit-playsinline", "true");
+          if (vid.srcObject !== stream) {
+            vid.srcObject = stream;
+          }
+          vid.play().catch((e) => console.warn("Video play exception:", e));
+          return true;
+        }
+        return false;
+      };
+
+      if (!applyStream()) {
+        setTimeout(applyStream, 50);
+        setTimeout(applyStream, 150);
+        setTimeout(applyStream, 300);
+      }
+
+      setScannerLoading(false);
+      startScanningEngine();
+    } catch (err: any) {
+      setScannerLoading(false);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setScannerError("Camera permission blocked! Browser address bar me Camera icon par click karke 'Allow' karein.");
+      } else {
+        setScannerError(`Camera open nahi ho paya: ${err.message || err.name}`);
+      }
+    }
+  };
+
+  const switchCamera = () => {
+    const nextMode = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(nextMode);
+    startPosCamera(nextMode);
+  };
+
+  const toggleTorch = async () => {
+    if (!scannerStreamRef.current) return;
+    const track = scannerStreamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const nextTorch = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: nextTorch } as any] });
+      setTorchOn(nextTorch);
+    } catch (e) {
+      console.warn("Torch error:", e);
+    }
+  };
+
+  const handleScannedCode = async (rawCode: string) => {
+    const code = (rawCode || "").trim();
+    if (!code) return;
+
+    if (Date.now() - lastScannedTimeRef.current < 2500) return;
+    lastScannedTimeRef.current = Date.now();
+
+    playBeep();
+    closePosScanner();
+
+    try {
+      const res = await api.get(`/scanner/lookup/${encodeURIComponent(code)}`);
+      if (res.data.success && res.data.data?.found && res.data.data?.medicine) {
+        const med = res.data.data.medicine;
+        const queryTerm = med.name || code;
+        setSearch(queryTerm);
+        setScanSuccessToast(`Scanned & Filtered: "${med.name}"`);
+        showToast.success(`Scanned & Filtered: "${med.name}"`);
+        setTimeout(() => setScanSuccessToast(null), 3500);
+      } else {
+        setSearch(code);
+        setScanSuccessToast(`Scanned Code: "${code}"`);
+        showToast.info(`Filter applied for code: "${code}"`);
+        setTimeout(() => setScanSuccessToast(null), 3500);
+      }
+    } catch {
+      setSearch(code);
+      setScanSuccessToast(`Scanned Code: "${code}"`);
+      showToast.info(`Filter applied for code: "${code}"`);
+      setTimeout(() => setScanSuccessToast(null), 3500);
+    }
+  };
+
+  const startScanningEngine = async () => {
+    const waitForVideo = (): Promise<void> => {
+      return new Promise((resolve) => {
+        let attempts = 0;
+        const check = () => {
+          if (scannerVideoRef.current && scannerVideoRef.current.videoWidth > 0 && scannerVideoRef.current.readyState >= 2) {
+            resolve();
+          } else if (attempts < 40) {
+            attempts++;
+            setTimeout(check, 100);
+          } else {
+            resolve();
+          }
+        };
+        check();
+      });
+    };
+
+    await waitForVideo();
+    if (!scannerVideoRef.current || !scannerStreamRef.current) return;
+
+    try {
+      if (zxingReaderRef.current) {
+        try {
+          zxingReaderRef.current.stopContinuousDecode();
+        } catch {}
+      }
+      const reader = createPosZxingReader();
+      zxingReaderRef.current = reader;
+      reader.decodeContinuously(scannerVideoRef.current, (result: any) => {
+        if (result) {
+          const text = result.getText ? result.getText() : result.text;
+          if (text) {
+            handleScannedCode(text);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("ZXing scanner continuous init error:", e);
+    }
+
+    if ("BarcodeDetector" in window) {
+      try {
+        let detector: any = null;
+        try {
+          detector = new (window as any).BarcodeDetector();
+        } catch {
+          detector = new (window as any).BarcodeDetector({
+            formats: ["qr_code", "data_matrix", "ean_13", "code_128", "code_39"],
+          });
+        }
+        const detectFrame = async () => {
+          if (!scannerVideoRef.current || !scannerStreamRef.current) return;
+          try {
+            if (scannerVideoRef.current.readyState >= 2) {
+              const barcodes = await detector.detect(scannerVideoRef.current);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                handleScannedCode(barcodes[0].rawValue);
+                return;
+              }
+            }
+          } catch {}
+          scanTimerRef.current = requestAnimationFrame(detectFrame);
+        };
+        scanTimerRef.current = requestAnimationFrame(detectFrame);
+      } catch {}
+    }
+  };
+
+  useEffect(() => {
+    if (showScannerModal) {
+      startPosCamera();
+    } else {
+      stopPosCamera();
+    }
+    return () => {
+      stopPosCamera();
+    };
+  }, [showScannerModal]);
 
   const fetchBatches = async () => {
     setLoading(true);
@@ -91,58 +398,89 @@ export const InventoryPage: React.FC = () => {
       const res = await api.post("/inventory/adjust", payload);
       if (res.data.success) {
         setShowAdjustModal(false);
-        setToastMsg(res.data.message);
-        setTimeout(() => setToastMsg(null), 4000);
+        showToast.success(res.data.message || "Stock adjusted successfully.");
         fetchBatches();
         fetchTransactions();
       }
     } catch (err: any) {
-      setModalError(err.response?.data?.error || "Failed to adjust stock");
+      const errMsg = err.response?.data?.error || "Failed to adjust stock";
+      setModalError(errMsg);
+      showToast.error(errMsg);
     } finally {
       setAdjustSaving(false);
     }
   };
 
   const handleQuarantine = async (batchId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === "QUARANTINED" ? "ACTIVE" : "QUARANTINED";
-    const promptMsg = nextStatus === "QUARANTINED"
-      ? "Enter quarantine reason (e.g. suspect packaging or defect):"
+    const isQuarantined = currentStatus === "QUARANTINED";
+    const nextStatus = isQuarantined ? "ACTIVE" : "QUARANTINED";
+    const promptMsg = !isQuarantined
+      ? "Enter reason for quarantine (e.g., Damaged packaging, Quality inspection, Temperature breach):"
       : "Enter reason for releasing from quarantine:";
     const reason = window.prompt(promptMsg, "Quality control review");
     if (reason === null) return;
 
     try {
       await api.put(`/batches/${batchId}/status`, { status: nextStatus, reason });
-      setToastMsg(`Batch status changed to ${nextStatus}`);
-      setTimeout(() => setToastMsg(null), 3000);
+      showToast.success(`Batch status changed to ${nextStatus}`);
       fetchBatches();
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to update status");
+      showToast.error(err.response?.data?.error || "Failed to update status");
     }
   };
+
   const getStatusBadge = (batch: any) => {
     if (batch.status === "EXPIRED" || batch.isExpired) {
-      return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center space-x-1"><ShieldAlert className="w-3 h-3 text-rose-600" /><span>EXPIRED (Locked)</span></span>;
+      return (
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center space-x-1">
+          <ShieldAlert className="w-3 h-3 text-rose-600" />
+          <span>EXPIRED (Locked)</span>
+        </span>
+      );
     }
     if (batch.status === "QUARANTINED") {
-      return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">QUARANTINED</span>;
+      return (
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+          QUARANTINED
+        </span>
+      );
     }
     if (batch.isExpiring30) {
-      return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 animate-pulse flex items-center space-x-1"><Clock className="w-3 h-3 text-amber-600" /><span>Expiring &lt;30d (Sell First)</span></span>;
+      return (
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 animate-pulse flex items-center space-x-1">
+          <Clock className="w-3 h-3 text-amber-600" />
+          <span>Expiring &lt;30d (Sell First)</span>
+        </span>
+      );
     }
     if (batch.isExpiring90) {
-      return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-800 border border-yellow-200">Expiring &lt;90d</span>;
+      return (
+        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-800 border border-yellow-200">
+          Expiring &lt;90d
+        </span>
+      );
     }
-    return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">ACTIVE (Safe)</span>;
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+        ACTIVE (Safe)
+      </span>
+    );
   };
 
   const getActionBadge = (type: string) => {
     switch (type) {
-      case "PURCHASE": return "bg-emerald-100 text-emerald-800 border-emerald-300";
-      case "SALE": return "bg-sky-100 text-sky-800 border-sky-300";
-      case "ADJUSTMENT_IN": case "RETURN": return "bg-teal-100 text-teal-800 border-teal-300";
-      case "ADJUSTMENT_OUT": case "DAMAGE": return "bg-rose-100 text-rose-800 border-rose-300";
-      default: return "bg-slate-100 text-slate-800 border-slate-300";
+      case "PURCHASE":
+        return "bg-emerald-100 text-emerald-800 border-emerald-300";
+      case "SALE":
+        return "bg-sky-100 text-sky-800 border-sky-300";
+      case "ADJUSTMENT_IN":
+      case "RETURN":
+        return "bg-teal-100 text-teal-800 border-teal-300";
+      case "ADJUSTMENT_OUT":
+      case "DAMAGE":
+        return "bg-rose-100 text-rose-800 border-rose-300";
+      default:
+        return "bg-slate-100 text-slate-800 border-slate-300";
     }
   };
 
@@ -181,7 +519,10 @@ export const InventoryPage: React.FC = () => {
             </button>
           </div>
           <button
-            onClick={() => { fetchBatches(); fetchTransactions(); }}
+            onClick={() => {
+              fetchBatches();
+              fetchTransactions();
+            }}
             className="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600"
             title="Refresh"
           >
@@ -197,19 +538,47 @@ export const InventoryPage: React.FC = () => {
         </div>
       )}
 
+      {/* Toast when medicine/code is scanned */}
+      {scanSuccessToast && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{scanSuccessToast}</span>
+        </div>
+      )}
+
       {/* Search & Filter Bar */}
       {activeTab === "batches" ? (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-3">
-            <div className="relative flex-1 w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search batch number..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-              />
+            <div className="relative flex-1 w-full flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search batch number or medicine by name / barcode..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    title="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={openPosScanner}
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer shrink-0 border border-emerald-500/20"
+                title="Open Camera QR / Barcode Scanner"
+              >
+                <QrCode className="w-4 h-4" />
+                <span className="font-semibold text-xs">Scan QR</span>
+              </button>
             </div>
             <select
               value={statusFilter}
@@ -254,7 +623,9 @@ export const InventoryPage: React.FC = () => {
                     <tr key={b._id} className={`hover:bg-slate-50/80 transition-colors ${b.isExpired ? "bg-rose-50/20" : ""}`}>
                       <td className="px-5 py-3.5">
                         <div className="font-bold text-slate-900">{b.medicineId?.name || "Unknown"}</div>
-                        <div className="text-[11px] text-slate-500">{b.medicineId?.genericName} &bull; {b.medicineId?.strength}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {b.medicineId?.genericName} &bull; {b.medicineId?.strength}
+                        </div>
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200 text-[11px]">
@@ -263,12 +634,14 @@ export const InventoryPage: React.FC = () => {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="font-bold text-slate-800">
-                          {new Date(b.expiryDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                          {new Date(b.expiryDate).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
-                        {getStatusBadge(b)}
-                      </td>
+                      <td className="px-5 py-3.5">{getStatusBadge(b)}</td>
                       <td className="px-5 py-3.5">
                         <span className="font-bold text-slate-900 text-sm">{b.quantity}</span>
                         <span className="text-slate-400 text-[10px] ml-1">{b.medicineId?.unit || "Units"}</span>
@@ -277,9 +650,7 @@ export const InventoryPage: React.FC = () => {
                         <div className="text-slate-800 font-semibold">₹{b.mrp?.toFixed(2)} (MRP)</div>
                         <div className="text-slate-400 text-[11px]">Cost: ₹{b.purchasePrice?.toFixed(2)}</div>
                       </td>
-                      <td className="px-5 py-3.5 text-slate-600">
-                        {b.supplierId?.name || "Direct Supplier"}
-                      </td>
+                      <td className="px-5 py-3.5 text-slate-600">{b.supplierId?.name || "Direct Supplier"}</td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex items-center justify-end space-x-1.5">
                           <button
@@ -340,31 +711,27 @@ export const InventoryPage: React.FC = () => {
                       <div className="font-bold text-slate-900">{tx.medicineId?.name || "Medicine"}</div>
                       <div className="text-[11px] text-slate-500">{tx.medicineId?.genericName}</div>
                     </td>
-                    <td className="px-5 py-3.5 font-mono text-slate-700">
-                      {tx.batchId?.batchNumber || "N/A"}
-                    </td>
+                    <td className="px-5 py-3.5 font-mono text-slate-700">{tx.batchId?.batchNumber || "N/A"}</td>
                     <td className="px-5 py-3.5">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getActionBadge(tx.type)}`}>
                         {tx.type}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={`font-bold inline-flex items-center space-x-0.5 ${
-                        tx.quantityDelta > 0 ? "text-emerald-600" : "text-rose-600"
-                      }`}>
+                      <span
+                        className={`font-bold inline-flex items-center space-x-0.5 ${
+                          tx.quantityDelta > 0 ? "text-emerald-600" : "text-rose-600"
+                        }`}
+                      >
                         {tx.quantityDelta > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                         <span>{tx.quantityDelta > 0 ? `+${tx.quantityDelta}` : tx.quantityDelta}</span>
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 font-bold text-slate-800">
-                      {tx.afterQuantity}
-                    </td>
+                    <td className="px-5 py-3.5 font-bold text-slate-800">{tx.afterQuantity}</td>
                     <td className="px-5 py-3.5 text-slate-600 max-w-xs truncate">
                       {tx.reason || "Standard system transaction"}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-600">
-                      {tx.userId?.name || "System"}
-                    </td>
+                    <td className="px-5 py-3.5 text-slate-600">{tx.userId?.name || "System"}</td>
                     <td className="px-5 py-3.5 text-slate-400 font-mono text-[11px]">
                       {new Date(tx.createdAt).toLocaleString()}
                     </td>
@@ -394,16 +761,19 @@ export const InventoryPage: React.FC = () => {
             </div>
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 font-mono">
-              <div><strong>Medicine:</strong> {selectedBatchForAdjust.medicineId?.name}</div>
-              <div><strong>Batch:</strong> {selectedBatchForAdjust.batchNumber}</div>
-              <div><strong>Current Stock:</strong> <span className="font-bold text-emerald-700">{selectedBatchForAdjust.quantity} units</span></div>
+              <div>
+                <strong>Medicine:</strong> {selectedBatchForAdjust.medicineId?.name}
+              </div>
+              <div>
+                <strong>Batch:</strong> {selectedBatchForAdjust.batchNumber}
+              </div>
+              <div>
+                <strong>Current Stock:</strong>{" "}
+                <span className="font-bold text-emerald-700">{selectedBatchForAdjust.quantity} units</span>
+              </div>
             </div>
 
-            {modalError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">
-                {modalError}
-              </div>
-            )}
+            {modalError && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{modalError}</div>}
 
             <form onSubmit={handleAdjustSubmit} className="space-y-3.5">
               <div>
@@ -473,6 +843,144 @@ export const InventoryPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Barcode & QR Scanner Modal */}
+      {showScannerModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative">
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between text-white">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-600/30">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Inventory QR &amp; Barcode Scanner</h3>
+                  <p className="text-[10px] text-emerald-400">Aim camera at batch barcode or QR to filter inventory</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closePosScanner}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Camera Error Alert if any */}
+            {scannerError && (
+              <div className="p-3 bg-rose-950 border-b border-rose-800 text-rose-300 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{scannerError}</span>
+              </div>
+            )}
+
+            {/* Video Viewport */}
+            <div className="relative w-full h-[320px] sm:h-[360px] bg-black flex items-center justify-center overflow-hidden">
+              <video
+                ref={scannerVideoRef}
+                playsInline
+                autoPlay
+                muted
+                onLoadedMetadata={() => {
+                  if (scannerVideoRef.current) {
+                    scannerVideoRef.current.play().catch(() => {});
+                  }
+                }}
+                className="w-full h-full object-cover"
+              />
+
+              {/* Loading Overlay */}
+              {scannerLoading && (
+                <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center space-y-2 text-slate-300 z-10">
+                  <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                  <span className="text-xs font-medium">Starting Camera...</span>
+                </div>
+              )}
+
+              {/* Camera Error or Inactive Overlay */}
+              {!scannerLoading && (!scannerStreamRef.current || scannerError) && (
+                <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center z-20">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mb-3 border border-rose-500/30">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Camera Stream Inactive</h4>
+                  <p className="text-xs text-slate-300 mb-4 max-w-xs leading-relaxed">
+                    {scannerError || "Camera permission prompt accept karein ya neeche button dabayein."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => startPosCamera(facingMode)}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center space-x-2 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Open Camera / Retry</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Viewfinder Target Overlaid */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
+                <div className="w-56 h-56 sm:w-60 sm:h-60 border-2 border-emerald-400/80 rounded-2xl relative shadow-[0_0_25px_rgba(16,185,129,0.35)] flex items-center justify-center">
+                  <div className="absolute -top-1 -left-1 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                  <div className="absolute -top-1 -right-1 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                  <div className="absolute -bottom-1 -left-1 w-5 h-5 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                  <div className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-pulse" />
+                </div>
+
+                <p className="mt-3 text-[11px] font-semibold text-emerald-300 bg-black/70 px-3 py-1 rounded-full backdrop-blur-md border border-emerald-500/30">
+                  Scanning live... Scan hote hi filter ho jayega
+                </p>
+              </div>
+
+              {/* Top Controls Overlay */}
+              <div className="absolute top-3 right-3 flex items-center space-x-2 z-10 pointer-events-auto">
+                {torchSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleTorch}
+                    className={`p-2 rounded-xl backdrop-blur-md border transition-all cursor-pointer ${
+                      torchOn
+                        ? "bg-amber-500 text-white border-amber-400 shadow-md shadow-amber-500/40"
+                        : "bg-black/60 text-slate-200 border-white/20 hover:bg-black/80"
+                    }`}
+                    title="Flashlight"
+                  >
+                    <Flashlight className="w-4 h-4" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={switchCamera}
+                  className="p-2 rounded-xl bg-black/60 hover:bg-black/80 text-slate-200 border border-white/20 backdrop-blur-md transition-all cursor-pointer"
+                  title="Switch Camera (Front/Back)"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping mr-1" />
+                <span>Camera Ready &bull; Auto-Filter</span>
+              </span>
+              <button
+                type="button"
+                onClick={closePosScanner}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl font-semibold transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

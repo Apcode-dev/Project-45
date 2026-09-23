@@ -27,10 +27,11 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: "*",
+  origin: true,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
 // Health Check
 app.get("/api/health", (_req, res) => {
@@ -63,13 +64,21 @@ app.use("/api/audit", auditRoutes);
 // Error Handler
 app.use(errorHandler);
 
+import { syncInventoryAlerts } from "./modules/alerts/alerts.controller.js";
+
 // Start Server after connecting to MongoDB
 const startServer = async () => {
   await connectDatabase();
 
-  app.listen(ENV.PORT, () => {
+  app.listen(Number(ENV.PORT), "0.0.0.0", () => {
     console.log(`[MIS API Server] running in ${ENV.NODE_ENV} mode on port ${ENV.PORT}`);
     console.log(`Health endpoint: http://localhost:${ENV.PORT}/api/health`);
+    
+    // Immediate initial sync & start 30s background inventory health monitor
+    syncInventoryAlerts().catch(() => {});
+    setInterval(() => {
+      syncInventoryAlerts().catch(() => {});
+    }, 30000);
   });
 };
 

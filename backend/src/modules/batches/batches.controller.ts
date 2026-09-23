@@ -21,7 +21,7 @@ export class BatchesController {
 
   async getBatchById(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await batchesService.getBatchById(req.params.id);
+      const data = await batchesService.getBatchById(req.params.id as string);
       if (!data) {
         res.status(404).json({ success: false, message: "Batch not found" });
         return;
@@ -45,7 +45,7 @@ export class BatchesController {
     try {
       const { id } = req.params;
       const { status, reason } = req.body;
-      const data = await batchesService.setBatchStatus(id, status, reason, req.user?.id);
+      const data = await batchesService.setBatchStatus(id as string, status, reason, req.user?.id);
       res.status(200).json({ success: true, data, message: `Batch status changed to ${status}` });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });

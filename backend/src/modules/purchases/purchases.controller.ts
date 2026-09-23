@@ -6,6 +6,8 @@ import { MedicineModel } from "../../database/models/Medicine.js";
 import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
 import { SupplierModel } from "../../database/models/Supplier.js";
 
+import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
+
 // Helper function to process stock inward for items
 async function processStockInward(items: IPurchaseItem[], poNumber: string, userId?: string) {
   for (const item of items) {
@@ -60,6 +62,9 @@ async function processStockInward(items: IPurchaseItem[], poNumber: string, user
       notes: `Batch ${item.batchNumber}, Buy: ₹${item.purchasePrice}, MRP: ₹${item.sellingPrice}`,
     });
   }
+
+  // Automatically sync inventory health & clear resolved alerts in real time
+  await syncInventoryAlerts().catch(() => {});
 }
 
 export const getAllPurchases = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

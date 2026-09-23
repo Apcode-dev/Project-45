@@ -28,7 +28,7 @@ export class ManufacturersController {
   async updateManufacturer(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await manufacturersService.updateManufacturer(id, req.body);
+      const data = await manufacturersService.updateManufacturer(id as string, req.body);
       res.status(200).json({ success: true, data });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
@@ -38,8 +38,8 @@ export class ManufacturersController {
   async deleteManufacturer(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await manufacturersService.deleteManufacturer(id);
-      res.status(200).json({ success: true, ...data });
+      const data = await manufacturersService.deleteManufacturer(id as string);
+      res.status(200).json(data);
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
     }

@@ -16,7 +16,9 @@ import {
   LucideIcon,
   X,
   Activity,
+  LogOut,
 } from "lucide-react";
+import { performLogout } from "../../store/authStore.js";
 
 interface NavItem {
   id: string;
@@ -39,6 +41,8 @@ interface SidebarProps {
   userRole?: string;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onLogout?: () => void;
+  alertsCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole = "ADMIN",
   isMobileOpen = false,
   onCloseMobile,
+  onLogout,
+  alertsCount = 0,
 }) => {
   const navSections: NavSection[] = [
     {
@@ -69,7 +75,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: "Monitoring & Insights",
       items: [
-        { id: "alerts", label: "Alerts Center", icon: AlertTriangle, badge: "3", badgeColor: "bg-rose-500 text-white" },
+        {
+          id: "alerts",
+          label: "Alerts Center",
+          icon: AlertTriangle,
+          badge: alertsCount > 0 ? String(alertsCount) : undefined,
+          badgeColor: "bg-rose-500 text-white animate-pulse shadow-xs",
+        },
         { id: "reports", label: "Reports & Valuation", icon: FileBarChart },
       ],
     },
@@ -90,10 +102,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  const normalizedRole = (userRole || "").toUpperCase().trim();
+  // Pharmacist, Manager, and Staff cannot view Monitoring & Insights and Administration
+  const isRestrictedRole = ["PHARMACIST", "MANAGER", "INVENTORY_MANAGER", "STAFF"].includes(normalizedRole);
+
+  const visibleSections = navSections.filter((section) => {
+    if (isRestrictedRole) {
+      if (section.title === "Monitoring & Insights" || section.title === "Administration") {
+        return false;
+      }
+    }
+    return true;
+  });
+
   const navContent = (
     <>
       <div className="p-3 space-y-5 overflow-y-auto sidebar-scroll flex-1">
-        {navSections.map((section, idx) => (
+        {visibleSections.map((section, idx) => (
           <div key={idx} className="space-y-1">
             <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               {section.title}
@@ -141,16 +166,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      {/* Footer info */}
-      <div className="p-4 border-t border-slate-800 text-xs text-slate-400 flex flex-col space-y-1 shrink-0">
-        <div className="flex items-center justify-between">
+      {/* Footer info & Logout button */}
+      <div className="p-3.5 border-t border-slate-800 text-xs text-slate-400 flex flex-col space-y-2.5 shrink-0 bg-slate-950/40">
+        <div className="flex items-center justify-between text-[11px]">
           <span>Active Role:</span>
           <span className="font-semibold text-emerald-400">{userRole}</span>
         </div>
-        <div className="flex items-center justify-between text-[11px]">
+        <div className="flex items-center justify-between text-[11px] text-slate-500">
           <span>Database:</span>
-          <span className="text-emerald-400 font-mono">MongoDB 7.0 (FEFO)</span>
+          <span className="text-emerald-400/80 font-mono text-[10px]">MongoDB 7.0 (FEFO)</span>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onCloseMobile) onCloseMobile();
+            if (onLogout) {
+              onLogout();
+            } else {
+              performLogout();
+            }
+          }}
+          className="w-full mt-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:bg-rose-500/30 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-semibold transition-all cursor-pointer shadow-xs"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Sign Out / Logout</span>
+        </button>
       </div>
     </>
   );

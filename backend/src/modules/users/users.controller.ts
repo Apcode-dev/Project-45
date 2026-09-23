@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { UserModel } from "../../database/models/User.js";
+import { getRolePermissions } from "../auth/auth.types.js";
 
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -50,6 +51,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
       passwordHash,
       phone: phone?.trim(),
       role,
+      permissions: getRolePermissions(role),
       status,
     });
 

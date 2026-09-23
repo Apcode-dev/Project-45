@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../services/api.js";
+import { showToast } from "../../utils/toast.js";
 import {
   Building2,
   Plus,
@@ -131,6 +132,7 @@ export const BranchesPage: React.FC = () => {
       });
 
       if (res.data.success) {
+        showToast.success(`Branch "${branchName}" created successfully!`);
         setShowBranchModal(false);
         setBranchName("");
         setBranchCode("");
@@ -139,7 +141,7 @@ export const BranchesPage: React.FC = () => {
         fetchBranches();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to create branch.");
+      showToast.error(err.response?.data?.message || "Failed to create branch.");
     } finally {
       setSavingBranch(false);
     }
@@ -150,17 +152,22 @@ export const BranchesPage: React.FC = () => {
     setTransferError(null);
 
     if (!fromBranchId || !toBranchId) {
-      setTransferError("Both source and destination branches are required.");
+      setTransferError("Please select both source and destination branches.");
       return;
     }
 
     if (fromBranchId === toBranchId) {
-      setTransferError("Source and destination cannot be the same branch.");
+      setTransferError("Source and Destination branches cannot be the same.");
       return;
     }
 
-    if (!selectedBatchId || Number(transferQty) <= 0) {
-      setTransferError("Valid batch and positive quantity are required.");
+    if (!selectedBatchId) {
+      setTransferError("Please select a batch to transfer.");
+      return;
+    }
+
+    if (!transferQty || Number(transferQty) <= 0) {
+      setTransferError("Transfer quantity must be greater than zero.");
       return;
     }
 
@@ -180,13 +187,16 @@ export const BranchesPage: React.FC = () => {
 
       const res = await api.post("/branches/transfers", payload);
       if (res.data.success) {
+        showToast.success("Transfer dispatched successfully!");
         setShowTransferModal(false);
         setTransferNotes("");
         setActiveTab("transfers");
         fetchTransfers();
       }
     } catch (err: any) {
-      setTransferError(err.response?.data?.message || "Transfer dispatch failed.");
+      const errMsg = err.response?.data?.message || "Transfer dispatch failed.";
+      setTransferError(errMsg);
+      showToast.error(errMsg);
     } finally {
       setTransferring(false);
     }
@@ -197,11 +207,11 @@ export const BranchesPage: React.FC = () => {
     try {
       const res = await api.put(`/branches/transfers/${transferId}/receive`);
       if (res.data.success) {
-        alert("Stock received into destination inventory successfully!");
+        showToast.success("Stock received into destination inventory successfully!");
         fetchTransfers();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to receive transfer.");
+      showToast.error(err.response?.data?.message || "Failed to receive transfer.");
     } finally {
       setReceivingId(null);
     }

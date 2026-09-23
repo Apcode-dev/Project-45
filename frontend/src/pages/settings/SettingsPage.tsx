@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { showToast } from "../../utils/toast.js";
 import {
   Settings,
   Building,
@@ -36,11 +37,14 @@ export const SettingsPage: React.FC = () => {
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
     setSavedSuccess(true);
+    showToast.success("Organization settings saved successfully!");
     setTimeout(() => setSavedSuccess(false), 3000);
   };
+
+  const handleSaveSettings = handleSaveGeneral;
 
   const handleTriggerBackup = async () => {
     setBackingUp(true);
@@ -48,9 +52,11 @@ export const SettingsPage: React.FC = () => {
     try {
       // Simulate backup completion with local JSON dump
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      setBackupSuccess(`Database snapshot created successfully: mis_backup_${new Date().toISOString().split("T")[0]}.archive`);
+      const backupFile = `mis_backup_${new Date().toISOString().split("T")[0]}.archive`;
+      setBackupSuccess(`Database snapshot created successfully: ${backupFile}`);
+      showToast.success(`Database snapshot created: ${backupFile}`);
     } catch (err) {
-      alert("Backup failed.");
+      showToast.error("Backup failed.");
     } finally {
       setBackingUp(false);
     }

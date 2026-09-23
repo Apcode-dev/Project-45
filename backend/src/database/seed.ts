@@ -36,15 +36,15 @@ async function seed() {
 
   // 1. Users
   console.log("[Seeder] Creating Users with hashed passwords...");
-  const adminHash = await bcrypt.hash("Admin@12345", 10);
+  const adminHash = await bcrypt.hash("apcodein", 10);
   const pharmaHash = await bcrypt.hash("Pharma@12345", 10);
   const stockHash = await bcrypt.hash("Stock@12345", 10);
   const staffHash = await bcrypt.hash("Staff@12345", 10);
 
   const admin = await UserModel.create({
-    email: "admin@mis.local",
+    email: "ap.code.in@gmail.com",
     passwordHash: adminHash,
-    name: "Dr. Rajesh Sharma (Admin)",
+    name: "AP Code (Admin)",
     phone: "+91 9876543210",
     role: "ADMIN",
     permissions: ["*"],
@@ -68,6 +68,29 @@ async function seed() {
     phone: "+91 9876543212",
     role: "INVENTORY_MANAGER",
     permissions: ["medicines:read", "inventory:write", "batches:write", "purchases:write"],
+    status: "ACTIVE",
+  });
+
+  const doctorHash = await bcrypt.hash("Doctor@12345", 10);
+  const managerHash = await bcrypt.hash("Manager@12345", 10);
+
+  const doctor = await UserModel.create({
+    email: "dr@mis.local",
+    passwordHash: doctorHash,
+    name: "Dr. Ananya Roy (Physician)",
+    phone: "+91 9876543214",
+    role: "DR",
+    permissions: ["dashboard:read", "medicines:read", "inventory:read", "batches:read", "sales:read", "sales:write", "scanner:read", "alerts:read", "reports:read"],
+    status: "ACTIVE",
+  });
+
+  const manager = await UserModel.create({
+    email: "manager@mis.local",
+    passwordHash: managerHash,
+    name: "Vikram Malhotra (Manager)",
+    phone: "+91 9876543212",
+    role: "MANAGER",
+    permissions: ["medicines:read", "medicines:write", "batches:read", "batches:write", "purchases:write", "inventory:write", "scanner:read"],
     status: "ACTIVE",
   });
 

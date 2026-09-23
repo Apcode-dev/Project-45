@@ -17,16 +17,44 @@ import { UsersPage } from "./pages/users/UsersPage.js";
 import { AuditPage } from "./pages/audit/AuditPage.js";
 import { SettingsPage } from "./pages/settings/SettingsPage.js";
 import { ModulePlaceholder } from "./pages/ModulePlaceholder.js";
+import { api } from "./services/api.js";
 
-import { LayoutDashboard, QrCode, Pill, ShoppingCart, Menu, Boxes } from "lucide-react";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { LayoutDashboard, QrCode, Pill, ShoppingCart, Menu, Boxes, ShieldAlert } from "lucide-react";
 
 export function App() {
-  const { isAuthenticated, user, login } = useAuth();
+  const { isAuthenticated, user, login, logout } = useAuth();
   const [activeModule, setActiveModule] = useState<string>("dashboard");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [alertsCount, setAlertsCount] = useState<number>(0);
+
+  const fetchAlertsCount = async () => {
+    try {
+      const res = await api.get("/alerts?isResolved=false");
+      if (res.data?.success) {
+        setAlertsCount(res.data.counts?.unresolved ?? 0);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      fetchAlertsCount();
+      const interval = setInterval(fetchAlertsCount, 12000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, activeModule]);
 
   if (!isAuthenticated) {
-    return <LoginPage onLoginSuccess={(loggedInUser, token) => login(loggedInUser, token)} />;
+    return (
+      <>
+        <ToastContainer position="top-right" autoClose={3200} hideProgressBar={false} newestOnTop closeOnClick pauseOnHover theme="colored" className="z-[99999]" />
+        <LoginPage onLoginSuccess={(loggedInUser, token) => login(loggedInUser, token)} />
+      </>
+    );
   }
 
   const handleNavigate = (mod: string) => {
@@ -34,7 +62,31 @@ export function App() {
     setIsMobileMenuOpen(false);
   };
 
+  const normalizedRole = (user?.role || "").toUpperCase().trim();
+  // Pharmacist, Manager, and Staff cannot access Monitoring & Insights or Administration
+  const isRestrictedRole = ["PHARMACIST", "MANAGER", "INVENTORY_MANAGER", "STAFF"].includes(normalizedRole);
+  const isRestrictedModule = ["alerts", "reports", "users", "audit", "settings"].includes(activeModule);
+
   const renderModuleContent = () => {
+    if (isRestrictedRole && isRestrictedModule) {
+      return (
+        <div className="p-8 bg-white rounded-2xl border border-rose-200 text-center max-w-lg mx-auto mt-12 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Access Restricted</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Security Notice: Aapka role ({user?.role}) is module (Monitoring & Insights / Administration) ke liye authorized nahi hai.
+          </p>
+          <button
+            onClick={() => handleNavigate("dashboard")}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs"
+          >
+            Go to Dashboard
+          </button>
+        </div>
+      );
+    }
     switch (activeModule) {
       case "dashboard":
         return <DashboardPage onNavigate={(mod) => handleNavigate(mod)} />;
@@ -51,7 +103,7 @@ export function App() {
       case "sales":
         return <SalesPage />;
       case "alerts":
-        return <AlertsPage onNavigate={(mod) => handleNavigate(mod)} />;
+        return <AlertsPage onNavigate={(mod) => handleNavigate(mod)} onAlertsUpdated={fetchAlertsCount} />;
       case "reports":
         return <ReportsPage />;
       case "branches":
@@ -68,28 +120,35 @@ export function App() {
   };
 
   return (
-    <div className="h-screen max-h-screen flex flex-col w-full overflow-hidden bg-slate-50">
+    <div className="h-[100dvh] min-h-[100dvh] max-h-[100dvh] flex flex-col w-full overflow-hidden bg-slate-50">
+      <ToastContainer position="top-right" autoClose={3200} hideProgressBar={false} newestOnTop closeOnClick pauseOnHover theme="colored" className="z-[99999]" />
       {/* Top Navigation (Fixed at top) */}
       <Navbar 
         onModuleChange={(mod) => handleNavigate(mod)} 
         isMobileOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        onLogout={logout}
+        alertsCount={alertsCount}
       />
 
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Left Modular Sidebar (Desktop Persistent & Mobile Drawer - Scrolls within itself only if needed) */}
+        {/* Left Modular Sidebar (Desktop Persistent & Mobile Drawer) */}
         <Sidebar
           activeModule={activeModule}
           onSelectModule={(mod) => handleNavigate(mod)}
           userRole={user?.role}
           isMobileOpen={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
+          onLogout={logout}
+          alertsCount={alertsCount}
         />
 
-        {/* Main Content Area (Scrolls independently) */}
-        <main className="flex-1 h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-5 lg:p-8 pb-24 lg:pb-8 bg-slate-50">
-          <div className="max-w-7xl mx-auto w-full">
+        {/* Main Content Area (Scrolls smoothly to the very bottom with mobile bottom clearance buffer) */}
+        <main className="flex-1 h-full min-h-0 min-w-0 overflow-y-auto p-3 sm:p-5 lg:p-8 pb-40 sm:pb-36 lg:pb-8 bg-slate-50 mobile-touch-scroll">
+          <div className="max-w-7xl mx-auto w-full space-y-6">
             {renderModuleContent()}
+            {/* Mobile bottom clearance spacer: ensures tables, buttons, totals are 100% visible and never clipped behind the mobile bottom bar */}
+            <div className="h-16 lg:hidden w-full shrink-0" aria-hidden="true" />
           </div>
         </main>
       </div>

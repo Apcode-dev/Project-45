@@ -3,6 +3,7 @@ import { MedicineModel } from "../../database/models/Medicine.js";
 import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
 import { AlertModel } from "../../database/models/Alert.js";
 import { createAuditLog } from "../../middleware/audit.js";
+import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
 
 export interface BatchFilterOptions {
   medicineId?: string;
@@ -33,7 +34,31 @@ export class BatchesService {
 
     if (options.search) {
       const regex = new RegExp(options.search.trim(), "i");
-      filter.batchNumber = regex;
+      const matchedMeds = await MedicineModel.find({
+        $or: [
+          { name: regex },
+          { genericName: regex },
+          { brandName: regex },
+          { initialCode: regex },
+        ],
+      }).select("_id").lean();
+      const medIds = matchedMeds.map((m) => m._id);
+
+      const searchOr: any[] = [
+        { batchNumber: regex },
+        { medicineId: { $in: medIds } },
+      ];
+
+      if (filter.medicineId) {
+        const existingMedId = filter.medicineId;
+        delete filter.medicineId;
+        filter.$and = [
+          { medicineId: existingMedId },
+          { $or: searchOr }
+        ];
+      } else {
+        filter.$or = searchOr;
+      }
     }
 
     const sortOrder: any = options.fefoSort !== false ? { expiryDate: 1 } : { createdAt: -1 };
@@ -125,6 +150,9 @@ export class BatchesService {
       details: { batchNumber: batch.batchNumber, quantity: batch.quantity, expiryDate: batch.expiryDate },
     });
 
+    // Automatically sync and clear any OUT OF STOCK or LOW STOCK alerts
+    await syncInventoryAlerts().catch(() => {});
+
     return batch;
   }
 
@@ -153,6 +181,8 @@ export class BatchesService {
         batchId: batch._id,
       });
     }
+
+    await syncInventoryAlerts().catch(() => {});
 
     return batch;
   }

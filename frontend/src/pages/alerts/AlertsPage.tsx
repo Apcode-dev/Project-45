@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../services/api.js";
+import { showToast } from "../../utils/toast.js";
 import {
   AlertTriangle,
   Clock,
@@ -17,9 +18,10 @@ import {
 
 interface AlertsPageProps {
   onNavigate?: (module: string) => void;
+  onAlertsUpdated?: () => void;
 }
 
-export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate }) => {
+export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate, onAlertsUpdated }) => {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [counts, setCounts] = useState({
     total: 0,
@@ -52,6 +54,7 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate }) => {
       if (res.data.success) {
         setAlerts(res.data.data);
         if (res.data.counts) setCounts(res.data.counts);
+        if (onAlertsUpdated) onAlertsUpdated();
       }
     } catch (err) {
       console.error("Failed to load alerts:", err);
@@ -70,11 +73,11 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate }) => {
     try {
       const res = await api.post("/alerts/scan");
       if (res.data.success) {
-        alert(`Scan Complete: ${res.data.message}`);
+        showToast.success(`Scan Complete: ${res.data.message}`);
         fetchAlerts();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to run scan.");
+      showToast.error(err.response?.data?.message || "Failed to run scan.");
     } finally {
       setScanning(false);
     }
@@ -86,9 +89,11 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate }) => {
     try {
       const res = await api.put(`/alerts/${alertId}/resolve`);
       if (res.data.success) {
+        showToast.success("Alert resolved successfully.");
         fetchAlerts();
       }
     } catch (err: any) {
+      showToast.error("Failed to resolve alert.");
       console.error("Failed to resolve alert:", err);
     } finally {
       setResolvingId(null);
@@ -101,9 +106,11 @@ export const AlertsPage: React.FC<AlertsPageProps> = ({ onNavigate }) => {
     try {
       const res = await api.put("/alerts/resolve-all");
       if (res.data.success) {
+        showToast.success(res.data.message || "All active alerts marked as resolved.");
         fetchAlerts();
       }
     } catch (err: any) {
+      showToast.error("Failed to resolve all alerts.");
       console.error("Failed to resolve all alerts:", err);
     }
   };

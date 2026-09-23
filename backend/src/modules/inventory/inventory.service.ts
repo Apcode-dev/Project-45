@@ -2,6 +2,7 @@ import { InventoryTransactionModel } from "../../database/models/InventoryTransa
 import { BatchModel } from "../../database/models/Batch.js";
 import { MedicineModel } from "../../database/models/Medicine.js";
 import { createAuditLog } from "../../middleware/audit.js";
+import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
 
 export interface StockAdjustmentPayload {
   medicineId: string;
@@ -83,7 +84,11 @@ export class InventoryService {
 
     const afterQty = beforeQty + delta;
     batch.quantity = afterQty;
-    if (afterQty === 0) batch.status = "DEPLETED";
+    if (afterQty === 0) {
+      batch.status = "DEPLETED";
+    } else if (afterQty > 0 && (batch.status === "DEPLETED" || !batch.status)) {
+      batch.status = "ACTIVE";
+    }
     await batch.save();
 
     const tx = await InventoryTransactionModel.create({
@@ -114,6 +119,11 @@ export class InventoryService {
         afterQty,
         reason,
       },
+    });
+
+    // Automatically sync inventory alerts and send Brevo email notifications
+    await syncInventoryAlerts().catch((err) => {
+      console.error("[InventoryService] Alert sync error:", err);
     });
 
     return {

@@ -13,5 +13,7 @@ router.delete("/:id", authenticate, (req, res, next) => categoriesController.del
 // Dosage Forms
 router.get("/dosage-forms/all", authenticate, (req, res, next) => categoriesController.getDosageForms(req, res, next));
 router.post("/dosage-forms", authenticate, (req, res, next) => categoriesController.createDosageForm(req, res, next));
+router.put("/dosage-forms/:id", authenticate, (req, res, next) => categoriesController.updateDosageForm(req, res, next));
+router.delete("/dosage-forms/:id", authenticate, (req, res, next) => categoriesController.deleteDosageForm(req, res, next));
 
 export default router;

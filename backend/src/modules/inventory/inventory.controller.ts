@@ -23,7 +23,7 @@ export class InventoryController {
     try {
       const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
       const data = await inventoryService.adjustStock(req.body, req.user?.id, ip);
-      res.status(200).json({ success: true, ...data });
+      res.status(200).json(data);
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
     }

@@ -30,7 +30,7 @@ export class CategoriesController {
   async updateCategory(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await categoriesService.updateCategory(id, req.body);
+      const data = await categoriesService.updateCategory(id as string, req.body);
       res.status(200).json({ success: true, data, message: "Category updated successfully" });
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
@@ -40,8 +40,8 @@ export class CategoriesController {
   async deleteCategory(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const data = await categoriesService.deleteCategory(id);
-      res.status(200).json({ success: true, ...data });
+      const data = await categoriesService.deleteCategory(id as string);
+      res.status(200).json(data);
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
     }
@@ -65,7 +65,27 @@ export class CategoriesController {
         return;
       }
       const data = await categoriesService.createDosageForm(name, shortName);
-      res.status(201).json({ success: true, data });
+      res.status(201).json({ success: true, data, message: "Dosage form created successfully" });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  async updateDosageForm(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const data = await categoriesService.updateDosageForm(id as string, req.body);
+      res.status(200).json({ success: true, data, message: "Dosage form updated successfully" });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  async deleteDosageForm(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const data = await categoriesService.deleteDosageForm(id as string);
+      res.status(200).json(data);
     } catch (err: any) {
       res.status(400).json({ success: false, error: err.message });
     }

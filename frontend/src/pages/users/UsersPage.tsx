@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../../services/api.js";
+import { showToast } from "../../utils/toast.js";
 import {
   Users,
   Plus,
@@ -79,6 +80,7 @@ export const UsersPage: React.FC = () => {
       });
 
       if (res.data.success) {
+        showToast.success(`User "${name}" created successfully!`);
         setShowCreateModal(false);
         setName("");
         setEmail("");
@@ -88,7 +90,9 @@ export const UsersPage: React.FC = () => {
         fetchUsers();
       }
     } catch (err: any) {
-      setFormError(err.response?.data?.message || "Failed to create user account.");
+      const errMsg = err.response?.data?.message || "Failed to create user account.";
+      setFormError(errMsg);
+      showToast.error(errMsg);
     } finally {
       setSavingUser(false);
     }
@@ -121,23 +125,29 @@ export const UsersPage: React.FC = () => {
         });
       }
 
+      showToast.success(`User "${editName}" updated successfully!`);
       setEditingUser(null);
       fetchUsers();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to update user.");
+      showToast.error(err.response?.data?.message || "Failed to update user.");
     } finally {
       setUpdatingUser(false);
     }
   };
 
   const getRoleBadge = (r: string) => {
-    switch (r) {
+    switch ((r || "").toUpperCase()) {
       case "ADMIN":
         return "bg-purple-100 text-purple-800 border-purple-200";
+      case "DR":
+      case "DOCTOR":
+        return "bg-teal-100 text-teal-800 border-teal-200";
       case "PHARMACIST":
         return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      case "MANAGER":
       case "INVENTORY_MANAGER":
         return "bg-amber-100 text-amber-800 border-amber-200";
+      case "STAFF":
       default:
         return "bg-slate-100 text-slate-700 border-slate-200";
     }
@@ -186,10 +196,11 @@ export const UsersPage: React.FC = () => {
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">All Roles</option>
-            <option value="ADMIN">Administrator</option>
-            <option value="PHARMACIST">Registered Pharmacist</option>
-            <option value="INVENTORY_MANAGER">Inventory Manager</option>
-            <option value="STAFF">Clinical Staff</option>
+            <option value="ADMIN">1. Admin</option>
+            <option value="DR">2. Dr</option>
+            <option value="PHARMACIST">3. Pharmacist</option>
+            <option value="MANAGER">4. Manager</option>
+            <option value="STAFF">5. Staff</option>
           </select>
 
           <button
@@ -363,10 +374,11 @@ export const UsersPage: React.FC = () => {
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-emerald-500"
                   >
-                    <option value="STAFF">Staff Operator</option>
-                    <option value="PHARMACIST">Registered Pharmacist</option>
-                    <option value="INVENTORY_MANAGER">Inventory Manager</option>
-                    <option value="ADMIN">System Administrator</option>
+                    <option value="ADMIN">1. Admin</option>
+                    <option value="DR">2. Dr</option>
+                    <option value="PHARMACIST">3. Pharmacist</option>
+                    <option value="MANAGER">4. Manager</option>
+                    <option value="STAFF">5. Staff</option>
                   </select>
                 </div>
               </div>
@@ -437,10 +449,11 @@ export const UsersPage: React.FC = () => {
                     onChange={(e) => setEditRole(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                   >
-                    <option value="STAFF">Staff Operator</option>
-                    <option value="PHARMACIST">Registered Pharmacist</option>
-                    <option value="INVENTORY_MANAGER">Inventory Manager</option>
-                    <option value="ADMIN">System Administrator</option>
+                    <option value="ADMIN">1. Admin</option>
+                    <option value="DR">2. Dr</option>
+                    <option value="PHARMACIST">3. Pharmacist</option>
+                    <option value="MANAGER">4. Manager</option>
+                    <option value="STAFF">5. Staff</option>
                   </select>
                 </div>
 

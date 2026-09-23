@@ -72,6 +72,25 @@ export class CategoriesService {
       shortName: shortName?.trim(),
     });
   }
+
+  async updateDosageForm(id: string, data: { name?: string; shortName?: string }) {
+    const form = await DosageFormModel.findById(id);
+    if (!form) throw new Error("Dosage Form not found");
+    if (data.name) form.name = data.name.trim();
+    if (data.shortName !== undefined) form.shortName = data.shortName.trim();
+    await form.save();
+    return form;
+  }
+
+  async deleteDosageForm(id: string) {
+    const usedInMedicine = await MedicineModel.findOne({ dosageFormId: id });
+    if (usedInMedicine) {
+      throw new Error("Cannot delete Dosage Form because it is linked to active medicines in catalog.");
+    }
+    const res = await DosageFormModel.findByIdAndDelete(id);
+    if (!res) throw new Error("Dosage Form not found");
+    return { success: true, message: "Dosage Form deleted successfully from database." };
+  }
 }
 
 export const categoriesService = new CategoriesService();

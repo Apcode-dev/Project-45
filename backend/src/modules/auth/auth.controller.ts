@@ -1,10 +1,36 @@
 import { Request, Response, NextFunction } from "express";
 import { authService } from "./auth.service.js";
-import { loginSchema } from "./auth.validation.js";
+import { loginSchema, registerSchema } from "./auth.validation.js";
 import { AuthenticatedRequest } from "../../middleware/auth.js";
 import { createAuditLog } from "../../middleware/audit.js";
 
 export class AuthController {
+  async register(req: Request, res: Response, _next: NextFunction): Promise<void> {
+    try {
+      const validated = registerSchema.parse(req.body);
+      const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress;
+      const result = await authService.register(validated, ip);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: "Account registered successfully",
+      });
+    } catch (err: any) {
+      if (err.errors) {
+        res.status(400).json({
+          success: false,
+          error: err.errors[0]?.message || "Validation error",
+        });
+        return;
+      }
+      res.status(400).json({
+        success: false,
+        error: err.message || "Registration failed",
+      });
+    }
+  }
+
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = loginSchema.parse(req.body);
@@ -58,6 +84,26 @@ export class AuthController {
       });
     } catch (err) {
       next(err);
+    }
+  }
+
+  async updateProfile(req: AuthenticatedRequest, res: Response, _next: NextFunction): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ success: false, error: "Unauthorized" });
+        return;
+      }
+      const updatedUser = await authService.updateProfile(req.user.id, req.body);
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: "Profile updated successfully",
+      });
+    } catch (err: any) {
+      res.status(400).json({
+        success: false,
+        error: err.message || "Failed to update profile",
+      });
     }
   }
 }

@@ -4,6 +4,7 @@ import { SaleModel, ISaleItem } from "../../database/models/Sale.js";
 import { BatchModel } from "../../database/models/Batch.js";
 import { MedicineModel } from "../../database/models/Medicine.js";
 import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
+import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
 
 export const getAllSales = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -251,6 +252,9 @@ export const createSale = async (req: Request, res: Response, next: NextFunction
       .populate("items.medicineId", "name genericName sku unit")
       .populate("items.batchId", "batchNumber expiryDate");
 
+    // Automatically sync inventory alerts in real time
+    await syncInventoryAlerts().catch(() => {});
+
     res.status(201).json({
       success: true,
       message: "Sale processed and stock dispensed successfully",
@@ -321,6 +325,8 @@ export const returnSale = async (req: Request, res: Response, next: NextFunction
 
     sale.status = "REFUNDED";
     await sale.save();
+
+    await syncInventoryAlerts().catch(() => {});
 
     res.status(200).json({
       success: true,
