@@ -806,18 +806,6 @@ export const ScannerPage: React.FC = () => {
                         </button>
                       )}
 
-                      {/* OCR Snap Button for non-QR medicine labels */}
-                      <button
-                        type="button"
-                        onClick={captureCameraFrameAndRecognize}
-                        disabled={ocrLoading || loading}
-                        className="px-2 py-1 rounded-xl bg-teal-600/90 hover:bg-teal-500 active:scale-95 text-white font-bold text-[10px] border border-teal-400/80 backdrop-blur-md shadow-md flex items-center space-x-1 cursor-pointer"
-                        title="Scan printed text (Batch No, Mfg, Exp, Price) directly from video"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-teal-200" />
-                        <span>{ocrLoading ? "Reading..." : "Read Text Label"}</span>
-                      </button>
-
                       {/* Flip Camera (Front / Back) */}
                       <button
                         type="button"
@@ -921,16 +909,6 @@ export const ScannerPage: React.FC = () => {
                           <span>Open Camera Scanner</span>
                         </>
                       )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full sm:w-auto py-3 px-4 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-teal-700/30 border border-teal-400/40 transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                      title="Capture photo to scan Batch No., Mfg Date, Expiry & MRP"
-                    >
-                      <Camera className="w-4 h-4 text-teal-200" />
-                      <span>Capture Image (OCR)</span>
                     </button>
                   </div>
                 </div>
