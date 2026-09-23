@@ -21,6 +21,7 @@ import {
   X,
   Sparkles,
   Camera,
+  Upload,
   Flashlight,
 } from "lucide-react";
 import {
@@ -93,9 +94,65 @@ export const SalesPage: React.FC = () => {
 
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const scannerStreamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scanTimerRef = useRef<any>(null);
   const zxingReaderRef = useRef<any>(null);
   const lastScannedTimeRef = useRef<number>(0);
+  const [ocrLoading, setOcrLoading] = useState(false);
+
+  const imageToBase64 = (source: File | Blob | HTMLCanvasElement): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (source instanceof HTMLCanvasElement) {
+        resolve(source.toDataURL("image/jpeg", 0.85));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(source);
+    });
+  };
+
+  const recognizePosImageText = async (imageSource: File | Blob | HTMLCanvasElement) => {
+    setOcrLoading(true);
+    try {
+      const base64 = await imageToBase64(imageSource);
+      const visionRes = await api.post("/scanner/vision-scan", { imageBase64: base64 });
+      if (visionRes.data.success && visionRes.data.data) {
+        const data = visionRes.data.data;
+        const code = data.extractedInfo?.batchNumber || data.code || "";
+        if (code) {
+          handleScannedCode(code);
+        } else {
+          showToast.error("Label text se batch code extract nahi ho paya.");
+        }
+      }
+    } catch (err) {
+      console.error("POS Vision Scan Error:", err);
+      showToast.error("Gemini AI Vision label read nahi kar paya.");
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const capturePosCameraFrame = async () => {
+    if (!scannerVideoRef.current) return;
+    const video = scannerVideoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    await recognizePosImageText(canvas);
+  };
+
+  const handlePosImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await recognizePosImageText(file);
+  };
 
   // Web Audio API Beep on successful scan
   const playBeep = () => {
@@ -1421,6 +1478,16 @@ export const SalesPage: React.FC = () => {
       {showScannerModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative">
+            {/* Hidden File Input for Image Upload / Photo Capture */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handlePosImageUpload}
+            />
+
             {/* Modal Header */}
             <div className="p-4 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between text-white">
               <div className="flex items-center space-x-2.5">
@@ -1428,8 +1495,8 @@ export const SalesPage: React.FC = () => {
                   <QrCode className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">POS Quick Barcode Scanner</h3>
-                  <p className="text-[10px] text-emerald-400">Aim camera at medicine barcode or QR</p>
+                  <h3 className="font-bold text-sm">POS Quick Barcode &amp; AI Label Scanner</h3>
+                  <p className="text-[10px] text-emerald-400">Aim camera or upload medicine label photo</p>
                 </div>
               </div>
               <button
@@ -1452,6 +1519,24 @@ export const SalesPage: React.FC = () => {
 
             {/* Video Viewport */}
             <div className="relative w-full h-[320px] sm:h-[360px] bg-black flex items-center justify-center overflow-hidden">
+              {/* Gemini Vision AI OCR Processing Screen Overlay */}
+              {ocrLoading && (
+                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150">
+                  <div className="relative w-16 h-16 mb-3 flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20 animate-ping" />
+                    <div className="absolute inset-0 rounded-full border-4 border-t-emerald-400 border-r-teal-400 border-b-transparent border-l-transparent animate-spin" />
+                    <Sparkles className="w-7 h-7 text-emerald-400 animate-pulse" />
+                  </div>
+                  <div className="text-xs font-bold text-white flex items-center space-x-2">
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    <span>Gemini AI Reading Medicine Label...</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-400 mt-2 font-mono bg-emerald-950/80 px-3 py-1 rounded-lg border border-emerald-500/40 animate-pulse">
+                    Extracting Batch Code &amp; Auto-Adding to Bill...
+                  </p>
+                </div>
+              )}
+
               <video
                 ref={scannerVideoRef}
                 playsInline
@@ -1481,16 +1566,26 @@ export const SalesPage: React.FC = () => {
                   </div>
                   <h4 className="text-sm font-bold text-white mb-1">Camera Stream Inactive</h4>
                   <p className="text-xs text-slate-300 mb-4 max-w-xs leading-relaxed">
-                    {scannerError || "Camera permission prompt accept karein ya neeche button dabayein."}
+                    {scannerError || "Camera permission prompt accept karein ya photo upload karein."}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => startPosCamera(facingMode)}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center space-x-2 transition-all cursor-pointer"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Open Camera / Retry</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startPosCamera(facingMode)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry Camera</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Photo</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1505,7 +1600,7 @@ export const SalesPage: React.FC = () => {
                 </div>
 
                 <p className="mt-3 text-[11px] font-semibold text-emerald-300 bg-black/70 px-3 py-1 rounded-full backdrop-blur-md border border-emerald-500/30">
-                  Scanning live... Scan hote hi bill me add ho jayega
+                  Scanning live... Barcode or AI Label Read
                 </p>
               </div>
 
@@ -1537,16 +1632,32 @@ export const SalesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center space-x-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping mr-1" />
-                <span>Camera Ready &bull; Auto-Add</span>
-              </span>
+            {/* Modal Footer with Action Buttons */}
+            <div className="p-3.5 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={capturePosCameraFrame}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center gap-1.5 transition-all shadow-sm shadow-emerald-600/30 cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>Snap Photo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+                >
+                  <Upload className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Upload Label</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={closePosScanner}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl font-semibold transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-slate-400 hover:text-white rounded-xl font-semibold transition-all cursor-pointer border border-slate-800"
               >
                 Close
               </button>

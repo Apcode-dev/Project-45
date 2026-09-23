@@ -46,6 +46,16 @@ function parseDateString(dateStr: string): string | null {
   return null;
 }
 
+export function generateRandomBatchNumber(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let alphabets = "";
+  for (let i = 0; i < 3; i++) {
+    alphabets += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  const digits = Math.floor(1000 + Math.random() * 9000).toString();
+  return `${alphabets}-${digits}`;
+}
+
 export function parseMedicineLabelText(text: string) {
   const cleanText = text.trim();
   let batchNumber = "";
@@ -96,6 +106,11 @@ export function parseMedicineLabelText(text: string) {
     .replace(/^[:\.\s]+/, "")
     .replace(/[:\.\s]+$/, "")
     .trim();
+
+  // If no batch number could be parsed from label, generate a structured random batch number (3 Letters - 4 Digits)
+  if (!batchNumber) {
+    batchNumber = generateRandomBatchNumber();
+  }
 
   // 2. MFG Date Extraction
   const mfgRegex = /(?:MFG|MFR|MFD|MANUFACTURING)(?:\.?\s*DATE|\.?\s*DT\.?)?\s*[:\.]*\s*([0-9A-Z\.\/\-\s]+?)(?:[\r\n]|$)/i;
