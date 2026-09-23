@@ -195,6 +195,9 @@ export class MedicinesService {
       details: { name: medicine.name, generic: medicine.genericName },
     });
 
+    // Schedule a 10-minute post-registration check: If no stock added after 10 mins, trigger Out of Stock Alert & Email
+    schedule10MinStockCheck(medicine._id.toString());
+
     return await this.getMedicineById(medicine._id.toString());
   }
 
