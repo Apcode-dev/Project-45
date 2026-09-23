@@ -910,6 +910,16 @@ export const ScannerPage: React.FC = () => {
                         </>
                       )}
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full sm:w-auto py-3 px-4 bg-gradient-to-r from-teal-700 to-emerald-700 hover:from-teal-600 hover:to-emerald-600 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-teal-700/30 border border-teal-400/40 transition-all flex items-center justify-center space-x-2 cursor-pointer shrink-0"
+                      title="Capture photo to scan Batch No., Mfg Date, Expiry & MRP"
+                    >
+                      <Camera className="w-4 h-4 text-teal-200" />
+                      <span>Capture Image (OCR)</span>
+                    </button>
                   </div>
                 </div>
               )}
