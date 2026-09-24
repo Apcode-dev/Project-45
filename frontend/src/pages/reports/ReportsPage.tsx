@@ -78,8 +78,7 @@ export const ReportsPage: React.FC = () => {
 
   // CSV Export Download Trigger
   const handleExportCSV = (type: "valuation" | "sales") => {
-    const token = localStorage.getItem("token");
-    const downloadUrl = `http://localhost:5001/api/reports/export/csv?type=${type}`;
+    const downloadUrl = `/api/reports/export/csv?type=${type}`;
     const link = document.createElement("a");
     link.href = downloadUrl;
     link.setAttribute("download", `mis_${type}_report.csv`);

@@ -23,9 +23,17 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { LayoutDashboard, QrCode, Pill, ShoppingCart, Menu, Boxes, ShieldAlert } from "lucide-react";
 
+import { useLocation, useNavigate } from "react-router-dom";
+
 export function App() {
   const { isAuthenticated, user, login, logout } = useAuth();
-  const [activeModule, setActiveModule] = useState<string>("dashboard");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Derive activeModule from current URL path (/medicines -> medicines)
+  const currentPath = location.pathname.replace(/^\//, "") || "dashboard";
+  const activeModule = currentPath;
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [alertsCount, setAlertsCount] = useState<number>(0);
 
@@ -58,7 +66,7 @@ export function App() {
   }
 
   const handleNavigate = (mod: string) => {
-    setActiveModule(mod);
+    navigate(mod === "dashboard" ? "/" : `/${mod}`);
     setIsMobileMenuOpen(false);
   };
 

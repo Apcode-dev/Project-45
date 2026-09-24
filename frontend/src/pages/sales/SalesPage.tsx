@@ -1268,7 +1268,7 @@ export const SalesPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[95vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Official Pharmacy Receipt
               </span>
@@ -1315,7 +1315,7 @@ export const SalesPage: React.FC = () => {
                 <table className="w-full text-xs text-left">
                   <thead>
                     <tr className="border-b border-slate-300 text-slate-600">
-                      <th className="py-1.5">Item / Batch</th>
+                      <th className="py-1.5">Item</th>
                       <th className="py-1.5 text-center">Qty</th>
                       <th className="py-1.5 text-right">Price</th>
                       <th className="py-1.5 text-right">Total</th>
@@ -1327,9 +1327,6 @@ export const SalesPage: React.FC = () => {
                         <td className="py-1.5">
                           <div className="font-bold text-slate-900">
                             {it.medicineId?.name || "Medicine"}
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            Batch: {it.batchNumber || it.batchId?.batchNumber || "—"}
                           </div>
                         </td>
                         <td className="py-1.5 text-center font-bold">{it.quantity}</td>
@@ -1370,12 +1367,11 @@ export const SalesPage: React.FC = () => {
 
               <div className="text-center pt-3 border-t border-dashed border-slate-300 text-[11px] text-slate-400">
                 <p>Thank you for choosing Apex Med-System!</p>
-                <p className="mt-0.5">Medicines dispensed under FEFO regulatory guidelines.</p>
               </div>
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 no-print">
               <button
                 onClick={() => window.print()}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
