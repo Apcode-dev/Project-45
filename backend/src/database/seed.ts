@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import { ENV } from "../config/environment.js";
+import { getRolePermissions } from "../modules/auth/auth.types.js";
 import {
   UserModel,
   CategoryModel,
@@ -16,7 +17,7 @@ import {
 } from "./models/index.js";
 
 async function seed() {
-  console.log("[Seeder] Connecting to MongoDB at", ENV.MONGODB_URI);
+  console.log("[Seeder] Connecting to MongoDB...");
   await mongoose.connect(ENV.MONGODB_URI);
 
   console.log("[Seeder] Clearing previous collections...");
@@ -35,74 +36,88 @@ async function seed() {
   ]);
 
   // 1. Users
-  console.log("[Seeder] Creating Users with hashed passwords...");
-  const adminHash = await bcrypt.hash("apcodein", 10);
-  const pharmaHash = await bcrypt.hash("Pharma@12345", 10);
-  const stockHash = await bcrypt.hash("Stock@12345", 10);
-  const staffHash = await bcrypt.hash("Staff@12345", 10);
+  console.log("[Seeder] Creating Users using environment configuration...");
+  const seedAdminEmail = ENV.SEED_ADMIN_EMAIL || "ap.code.in@gmail.com";
+  const seedAdminPassword = ENV.SEED_ADMIN_PASSWORD || "Admin@MIS#2026!Secure";
+  const seedDemoPassword = ENV.SEED_DEMO_PASSWORD || "Demo@MIS#2026!Pass";
+
+  const adminHash = await bcrypt.hash(seedAdminPassword, 10);
+  const demoHash = await bcrypt.hash(seedDemoPassword, 10);
 
   const admin = await UserModel.create({
-    email: "ap.code.in@gmail.com",
+    email: seedAdminEmail.toLowerCase().trim(),
     passwordHash: adminHash,
     name: "AP Code (Admin)",
     phone: "+91 9876543210",
     role: "ADMIN",
-    permissions: ["*"],
+    permissions: getRolePermissions("ADMIN"),
     status: "ACTIVE",
+    mustChangePassword: true,
   });
 
-  const pharmacist = await UserModel.create({
-    email: "pharmacist@mis.local",
-    passwordHash: pharmaHash,
-    name: "Anjali Patel (Pharmacist)",
-    phone: "+91 9876543211",
-    role: "PHARMACIST",
-    permissions: ["medicines:read", "medicines:write", "sales:write", "batches:read"],
-    status: "ACTIVE",
-  });
+  let pharmacist = admin;
+  let inventoryMgr = admin;
+  let doctor = admin;
+  let manager = admin;
+  let staff = admin;
 
-  const inventoryMgr = await UserModel.create({
-    email: "inventory@mis.local",
-    passwordHash: stockHash,
-    name: "Vikram Malhotra (Inventory Mgr)",
-    phone: "+91 9876543212",
-    role: "INVENTORY_MANAGER",
-    permissions: ["medicines:read", "inventory:write", "batches:write", "purchases:write"],
-    status: "ACTIVE",
-  });
+  // In production mode, remove hardcoded demo accounts
+  if (ENV.NODE_ENV !== "production") {
+    pharmacist = await UserModel.create({
+      email: "pharmacist@mis.local",
+      passwordHash: demoHash,
+      name: "Anjali Patel (Pharmacist)",
+      phone: "+91 9876543211",
+      role: "PHARMACIST",
+      permissions: getRolePermissions("PHARMACIST"),
+      status: "ACTIVE",
+      mustChangePassword: true,
+    });
 
-  const doctorHash = await bcrypt.hash("Doctor@12345", 10);
-  const managerHash = await bcrypt.hash("Manager@12345", 10);
+    inventoryMgr = await UserModel.create({
+      email: "inventory@mis.local",
+      passwordHash: demoHash,
+      name: "Vikram Malhotra (Inventory Mgr)",
+      phone: "+91 9876543212",
+      role: "INVENTORY_MANAGER",
+      permissions: getRolePermissions("INVENTORY_MANAGER"),
+      status: "ACTIVE",
+      mustChangePassword: true,
+    });
 
-  const doctor = await UserModel.create({
-    email: "dr@mis.local",
-    passwordHash: doctorHash,
-    name: "Dr. Ananya Roy (Physician)",
-    phone: "+91 9876543214",
-    role: "DR",
-    permissions: ["dashboard:read", "medicines:read", "inventory:read", "batches:read", "sales:read", "sales:write", "scanner:read", "alerts:read", "reports:read"],
-    status: "ACTIVE",
-  });
+    doctor = await UserModel.create({
+      email: "dr@mis.local",
+      passwordHash: demoHash,
+      name: "Dr. Ananya Roy (Physician)",
+      phone: "+91 9876543214",
+      role: "DR",
+      permissions: getRolePermissions("DR"),
+      status: "ACTIVE",
+      mustChangePassword: true,
+    });
 
-  const manager = await UserModel.create({
-    email: "manager@mis.local",
-    passwordHash: managerHash,
-    name: "Vikram Malhotra (Manager)",
-    phone: "+91 9876543212",
-    role: "MANAGER",
-    permissions: ["medicines:read", "medicines:write", "batches:read", "batches:write", "purchases:write", "inventory:write", "scanner:read"],
-    status: "ACTIVE",
-  });
+    manager = await UserModel.create({
+      email: "manager@mis.local",
+      passwordHash: demoHash,
+      name: "Vikram Malhotra (Manager)",
+      phone: "+91 9876543212",
+      role: "MANAGER",
+      permissions: getRolePermissions("MANAGER"),
+      status: "ACTIVE",
+      mustChangePassword: true,
+    });
 
-  const staff = await UserModel.create({
-    email: "staff@mis.local",
-    passwordHash: staffHash,
-    name: "Rahul Verma (Counter Staff)",
-    phone: "+91 9876543213",
-    role: "STAFF",
-    permissions: ["medicines:read", "sales:write", "scanner:read"],
-    status: "ACTIVE",
-  });
+    staff = await UserModel.create({
+      email: "staff@mis.local",
+      passwordHash: demoHash,
+      name: "Rahul Verma (Counter Staff)",
+      phone: "+91 9876543213",
+      role: "STAFF",
+      permissions: getRolePermissions("STAFF"),
+      status: "ACTIVE",
+      mustChangePassword: true,
+    });
+  }
 
   // 2. Dosage Forms
   console.log("[Seeder] Creating Dosage Forms...");

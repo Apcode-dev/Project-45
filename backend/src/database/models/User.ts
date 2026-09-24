@@ -9,6 +9,7 @@ export interface IUser extends Document {
   role: "ADMIN" | "DR" | "DOCTOR" | "PHARMACIST" | "MANAGER" | "INVENTORY_MANAGER" | "STAFF";
   permissions: string[];
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  mustChangePassword?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +34,7 @@ const UserSchema: Schema = new Schema(
       default: "ACTIVE",
       index: true,
     },
+    mustChangePassword: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -6,6 +6,7 @@ import { InventoryTransactionModel } from "../../database/models/InventoryTransa
 import { AlertModel } from "../../database/models/Alert.js";
 import { createAuditLog } from "../../middleware/audit.js";
 import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
+import { sanitizeSearchQuery } from "../../utils/sanitize.js";
 
 export interface MedicineFilterOptions {
   search?: string;
@@ -28,13 +29,16 @@ export class MedicinesService {
     const filter: any = { isActive: true };
 
     if (options.search) {
-      const regex = new RegExp(options.search.trim(), "i");
-      filter.$or = [
-        { name: regex },
-        { genericName: regex },
-        { brandName: regex },
-        { composition: regex },
-      ];
+      const cleanSearch = sanitizeSearchQuery(options.search);
+      if (cleanSearch) {
+        const regex = new RegExp(cleanSearch, "i");
+        filter.$or = [
+          { name: regex },
+          { genericName: regex },
+          { brandName: regex },
+          { composition: regex },
+        ];
+      }
     }
 
     if (options.dosageFormId) filter.dosageFormId = options.dosageFormId;
@@ -237,45 +241,20 @@ export class MedicinesService {
     const medicine = await MedicineModel.findById(id);
     if (!medicine) throw new Error("Medicine not found");
 
-    // Check if this medicine has been sold in historical sales
-    const hasSales = await SaleModel.exists({ "items.medicineId": id });
+    // Soft delete: Always preserve historical purchase/sale/batch records by setting isActive = false
+    medicine.isActive = false;
+    await medicine.save();
 
-    if (!hasSales) {
-      // Complete permanent delete: remove barcodes, batches, transactions, alerts, and medicine
-      await Promise.all([
-        MedicineCodeModel.deleteMany({ medicineId: id }),
-        BatchModel.deleteMany({ medicineId: id }),
-        InventoryTransactionModel.deleteMany({ medicineId: id }),
-        AlertModel.deleteMany({ medicineId: id }),
-        MedicineModel.findByIdAndDelete(id),
-      ]);
+    await createAuditLog("DEACTIVATE_MEDICINE", "MEDICINE", {
+      entityId: medicine._id.toString(),
+      userId,
+      details: { name: medicine.name, note: "Deactivated to preserve historical records intact" },
+    });
 
-      await createAuditLog("DELETE_MEDICINE_PERMANENT", "MEDICINE", {
-        entityId: id,
-        userId,
-        details: { name: medicine.name, note: "Permanently purged from database to keep storage clean" },
-      });
-
-      return {
-        success: true,
-        message: `Medicine "${medicine.name}" and all associated data permanently deleted from database.`,
-      };
-    } else {
-      // Preserve historical sales/tax records: deactivate medicine
-      medicine.isActive = false;
-      await medicine.save();
-
-      await createAuditLog("DEACTIVATE_MEDICINE", "MEDICINE", {
-        entityId: medicine._id.toString(),
-        userId,
-        details: { name: medicine.name, note: "Deactivated because historical sales records exist" },
-      });
-
-      return {
-        success: true,
-        message: `Medicine "${medicine.name}" has historical sales records, so it has been deactivated/archived.`,
-      };
-    }
+    return {
+      success: true,
+      message: `Medicine "${medicine.name}" has been deactivated. Historical records remain intact.`,
+    };
   }
 
   async addMedicineCode(medicineId: string, codeValue: string, codeType: "BARCODE" | "QR" | "DATAMATRIX" = "BARCODE") {
@@ -294,3 +273,13 @@ export class MedicinesService {
 }
 
 export const medicinesService = new MedicinesService();
+
+function schedule10MinStockCheck(medicineId: string) {
+  setTimeout(async () => {
+    try {
+      await syncInventoryAlerts();
+    } catch (err) {
+      console.error(`10-min stock check failed for medicine ${medicineId}:`, err);
+    }
+  }, 10 * 60 * 1000);
+}

@@ -13,3 +13,5 @@ export * from "./AuditLog.js";
 export * from "./Branch.js";
 export * from "./PurchaseOrder.js";
 export * from "./StockTransfer.js";
+export * from "./Setting.js";
+export * from "./Counter.js";

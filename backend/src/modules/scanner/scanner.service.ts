@@ -444,7 +444,7 @@ Return ONLY raw JSON with keys: "batchNumber", "mfgDate", "expDate", "mrp". No e
     }
 
     const searchCode = aiResult.batchNumber || aiResult.rawText || "";
-    const lookup = searchCode ? await this.lookupCode(searchCode) : { found: false, code: "", extractedInfo: {} };
+    const lookup: any = searchCode ? await this.lookupCode(searchCode) : { found: false, code: "", extractedInfo: {} };
 
     return {
       ...lookup,

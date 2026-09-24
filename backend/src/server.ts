@@ -22,12 +22,21 @@ import reportsRoutes from "./modules/reports/reports.routes.js";
 import branchesRoutes from "./modules/branches/branches.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
 import auditRoutes from "./modules/audit/audit.routes.js";
+import settingsRoutes from "./modules/settings/settings.routes.js";
+import backupRoutes from "./modules/system/backup.routes.js";
 
 const app = express();
 
-// Middleware
+// Middleware (PHASE 14 - CORS Fix)
+const allowedOrigins = [ENV.CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000"].filter(Boolean);
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS policy blocked this request"));
+    }
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: "15mb" }));
@@ -60,6 +69,8 @@ app.use("/api/reports", reportsRoutes);
 app.use("/api/branches", branchesRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/system", backupRoutes);
 
 // Error Handler
 app.use(errorHandler);

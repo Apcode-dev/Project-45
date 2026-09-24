@@ -9,8 +9,6 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name is too long"),
   email: z.string().email("Invalid email format"),
-  role: z.enum(["ADMIN", "DR", "DOCTOR", "PHARMACIST", "MANAGER", "INVENTORY_MANAGER", "STAFF"], {
-    errorMap: () => ({ message: "Role must be ADMIN, DR, PHARMACIST, MANAGER, or STAFF" }),
-  }),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.string().optional(), // Role is ignored on public registration and forced to STAFF by backend
 });

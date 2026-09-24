@@ -1,8 +1,38 @@
-import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
+import { Types } from "mongoose";
 import { BatchModel } from "../../database/models/Batch.js";
 import { MedicineModel } from "../../database/models/Medicine.js";
+import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
 import { createAuditLog } from "../../middleware/audit.js";
 import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
+import { executeInTransaction } from "../../utils/transaction.js";
+
+export async function syncMedicineStockFromBatches(medicineId: string, session?: any): Promise<number> {
+  const result = await BatchModel.aggregate([
+    {
+      $match: {
+        medicineId: new Types.ObjectId(medicineId),
+        status: { $nin: ["EXPIRED", "QUARANTINED"] },
+        quantity: { $gt: 0 },
+      },
+    },
+    {
+      $group: {
+        _id: "$medicineId",
+        totalStock: { $sum: "$quantity" },
+      },
+    },
+  ]).session(session || null);
+
+  const calculatedTotalStock = result.length > 0 ? Number(result[0].totalStock) || 0 : 0;
+
+  await MedicineModel.findByIdAndUpdate(
+    medicineId,
+    { totalStock: calculatedTotalStock },
+    { session: session || null }
+  );
+
+  return calculatedTotalStock;
+}
 
 export interface StockAdjustmentPayload {
   medicineId: string;
@@ -63,75 +93,85 @@ export class InventoryService {
       throw new Error("A clear audit reason (minimum 3 characters) is mandatory for any stock adjustment.");
     }
 
-    const batch = await BatchModel.findById(batchId);
-    if (!batch) throw new Error("Target batch not found.");
+    return await executeInTransaction(async (session) => {
+      const batch = await BatchModel.findById(batchId).session(session || null);
+      if (!batch) throw new Error("Target batch not found.");
 
-    if (batch.medicineId.toString() !== medicineId) {
-      throw new Error("Batch does not belong to specified medicine.");
-    }
-
-    const beforeQty = batch.quantity;
-    let delta = 0;
-
-    if (type === "ADJUSTMENT_IN" || type === "RETURN") {
-      delta = Number(quantity);
-    } else if (type === "ADJUSTMENT_OUT" || type === "DAMAGE") {
-      delta = -Number(quantity);
-      if (beforeQty + delta < 0) {
-        throw new Error(`Insufficient batch stock. Current quantity is ${beforeQty}, cannot deduct ${quantity}.`);
+      if (batch.medicineId.toString() !== medicineId) {
+        throw new Error("Batch does not belong to specified medicine.");
       }
-    }
 
-    const afterQty = beforeQty + delta;
-    batch.quantity = afterQty;
-    if (afterQty === 0) {
-      batch.status = "DEPLETED";
-    } else if (afterQty > 0 && (batch.status === "DEPLETED" || !batch.status)) {
-      batch.status = "ACTIVE";
-    }
-    await batch.save();
+      const beforeQty = batch.quantity;
+      let delta = 0;
 
-    const tx = await InventoryTransactionModel.create({
-      medicineId,
-      batchId,
-      type,
-      quantityDelta: delta,
-      beforeQuantity: beforeQty,
-      afterQuantity: afterQty,
-      reason: reason.trim(),
-      notes: notes?.trim(),
-      userId,
-      ipAddress,
+      if (type === "ADJUSTMENT_IN" || type === "RETURN") {
+        delta = Number(quantity);
+      } else if (type === "ADJUSTMENT_OUT" || type === "DAMAGE") {
+        delta = -Number(quantity);
+        if (beforeQty + delta < 0) {
+          throw new Error(`Insufficient batch stock. Current quantity is ${beforeQty}, cannot deduct ${quantity}.`);
+        }
+      }
+
+      const afterQty = beforeQty + delta;
+      batch.quantity = afterQty;
+      if (afterQty === 0) {
+        batch.status = "DEPLETED";
+      } else if (afterQty > 0 && (batch.status === "DEPLETED" || !batch.status)) {
+        batch.status = "ACTIVE";
+      }
+      await batch.save({ session });
+
+      const txDocs = await InventoryTransactionModel.create(
+        [
+          {
+            medicineId,
+            batchId,
+            type,
+            quantityDelta: delta,
+            beforeQuantity: beforeQty,
+            afterQuantity: afterQty,
+            reason: reason.trim(),
+            notes: notes?.trim(),
+            userId,
+            ipAddress,
+          },
+        ],
+        { session }
+      );
+
+      // Synchronize Medicine.totalStock from actual batches in same transaction
+      await syncMedicineStockFromBatches(medicineId, session);
+
+      const medicine = await MedicineModel.findById(medicineId).select("name").session(session || null);
+
+      await createAuditLog("STOCK_ADJUSTMENT", "BATCH", {
+        entityId: batch._id.toString(),
+        userId,
+        ipAddress,
+        details: {
+          medicineName: medicine?.name,
+          batchNumber: batch.batchNumber,
+          type,
+          delta,
+          beforeQty,
+          afterQty,
+          reason,
+        },
+      });
+
+      // Automatically sync inventory alerts
+      await syncInventoryAlerts().catch((err) => {
+        console.error("[InventoryService] Alert sync error:", err);
+      });
+
+      return {
+        success: true,
+        message: `Stock adjusted successfully. Batch ${batch.batchNumber} updated from ${beforeQty} to ${afterQty}.`,
+        transaction: txDocs[0],
+        currentBatchStock: afterQty,
+      };
     });
-
-    const medicine = await MedicineModel.findById(medicineId).select("name");
-
-    await createAuditLog("STOCK_ADJUSTMENT", "BATCH", {
-      entityId: batch._id.toString(),
-      userId,
-      ipAddress,
-      details: {
-        medicineName: medicine?.name,
-        batchNumber: batch.batchNumber,
-        type,
-        delta,
-        beforeQty,
-        afterQty,
-        reason,
-      },
-    });
-
-    // Automatically sync inventory alerts and send Brevo email notifications
-    await syncInventoryAlerts().catch((err) => {
-      console.error("[InventoryService] Alert sync error:", err);
-    });
-
-    return {
-      success: true,
-      message: `Stock adjusted successfully. Batch ${batch.batchNumber} updated from ${beforeQty} to ${afterQty}.`,
-      transaction: tx,
-      currentBatchStock: afterQty,
-    };
   }
 }
 

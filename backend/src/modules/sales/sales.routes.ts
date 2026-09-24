@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
+import { validateBody } from "../../middleware/validate.js";
+import { createSaleSchema } from "./sales.validation.js";
 import {
   getAllSales,
   getSaleById,
@@ -13,7 +15,7 @@ router.use(authenticate);
 
 router.get("/", getAllSales);
 router.get("/:id", getSaleById);
-router.post("/", createSale);
+router.post("/", validateBody(createSaleSchema), createSale);
 router.post("/:id/return", returnSale);
 
 export default router;

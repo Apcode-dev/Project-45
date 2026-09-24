@@ -7,8 +7,8 @@ export interface LoginPayload {
 export interface RegisterPayload {
   name: string;
   email: string;
-  role: "ADMIN" | "DR" | "DOCTOR" | "PHARMACIST" | "MANAGER" | "INVENTORY_MANAGER" | "STAFF";
   password: string;
+  role?: string;
 }
 
 export const getRolePermissions = (role: string): string[] => {
@@ -57,6 +57,7 @@ export interface AuthResponse {
     avatar?: string | null;
     role: string;
     permissions: string[];
+    mustChangePassword?: boolean;
   };
 }
 

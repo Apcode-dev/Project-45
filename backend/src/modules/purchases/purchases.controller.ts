@@ -8,20 +8,25 @@ import { SupplierModel } from "../../database/models/Supplier.js";
 
 import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
 
-// Helper function to process stock inward for items
-async function processStockInward(items: IPurchaseItem[], poNumber: string, userId?: string) {
-  for (const item of items) {
-    const med = await MedicineModel.findById(item.medicineId);
-    if (!med) continue;
+import { executeInTransaction } from "../../utils/transaction.js";
+import { syncMedicineStockFromBatches } from "../inventory/inventory.service.js";
+import { generateNextSequenceNumber } from "../../utils/counter.js";
 
-    const beforeStock = med.totalStock || 0;
+// Helper function to process stock inward for items within a session transaction
+async function processStockInward(items: IPurchaseItem[], poNumber: string, userId?: string, session?: any) {
+  for (const item of items) {
     const addedQty = Number(item.quantity);
+    if (addedQty <= 0) continue;
 
     // Find or create batch
-    let batch = await BatchModel.findOne({
-      medicineId: item.medicineId,
-      batchNumber: item.batchNumber.trim(),
-    });
+    let batch = await BatchModel.findOne(
+      {
+        medicineId: item.medicineId,
+        batchNumber: item.batchNumber.trim(),
+      },
+      null,
+      { session }
+    );
 
     if (batch) {
       batch.quantity += addedQty;
@@ -30,40 +35,50 @@ async function processStockInward(items: IPurchaseItem[], poNumber: string, user
       batch.expiryDate = new Date(item.expiryDate);
       if (item.manufacturingDate) batch.manufacturingDate = new Date(item.manufacturingDate);
       batch.status = "ACTIVE";
-      await batch.save();
+      await batch.save({ session });
     } else {
-      batch = await BatchModel.create({
-        medicineId: item.medicineId,
-        batchNumber: item.batchNumber.trim(),
-        expiryDate: new Date(item.expiryDate),
-        manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : new Date(),
-        quantity: addedQty,
-        initialQuantity: addedQty,
-        purchasePrice: item.purchasePrice,
-        mrp: item.sellingPrice,
-        status: "ACTIVE",
-      });
+      const [newBatch] = await BatchModel.create(
+        [
+          {
+            medicineId: item.medicineId,
+            batchNumber: item.batchNumber.trim(),
+            expiryDate: new Date(item.expiryDate),
+            manufacturingDate: item.manufacturingDate ? new Date(item.manufacturingDate) : new Date(),
+            quantity: addedQty,
+            initialQuantity: addedQty,
+            purchasePrice: item.purchasePrice,
+            mrp: item.sellingPrice,
+            status: "ACTIVE",
+          },
+        ],
+        { session }
+      );
+      batch = newBatch;
     }
 
-    // Update medicine total stock
-    med.totalStock = beforeStock + addedQty;
-    await med.save();
+    // Synchronize Medicine.totalStock from actual batches in same transaction
+    const newTotalStock = await syncMedicineStockFromBatches(item.medicineId.toString(), session);
 
-    // Log immutable InventoryTransaction
-    await InventoryTransactionModel.create({
-      medicineId: item.medicineId,
-      batchId: batch._id,
-      type: "PURCHASE",
-      quantityDelta: addedQty,
-      beforeQuantity: beforeStock,
-      afterQuantity: med.totalStock,
-      reason: `Purchase Inward [PO: ${poNumber}]`,
-      userId: userId ? new Types.ObjectId(userId) : undefined,
-      notes: `Batch ${item.batchNumber}, Buy: ₹${item.purchasePrice}, MRP: ₹${item.sellingPrice}`,
-    });
+    // Log immutable InventoryTransaction inside session
+    await InventoryTransactionModel.create(
+      [
+        {
+          medicineId: item.medicineId,
+          batchId: batch._id,
+          type: "PURCHASE",
+          quantityDelta: addedQty,
+          beforeQuantity: newTotalStock - addedQty,
+          afterQuantity: newTotalStock,
+          reason: `Purchase Inward [PO: ${poNumber}]`,
+          userId: userId ? new Types.ObjectId(userId) : undefined,
+          notes: `Batch ${item.batchNumber}, Buy: ₹${item.purchasePrice}, MRP: ₹${item.sellingPrice}`,
+        },
+      ],
+      { session }
+    );
   }
 
-  // Automatically sync inventory health & clear resolved alerts in real time
+  // Automatically sync inventory health
   await syncInventoryAlerts().catch(() => {});
 }
 
@@ -180,34 +195,41 @@ export const createPurchase = async (req: Request, res: Response, next: NextFunc
     const discountAmount = Number(discount) || 0;
     const grandTotal = Number((subtotal + taxAmount + shippingAmount - discountAmount).toFixed(2));
 
-    const poNumber = `PO-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+    const populated = await executeInTransaction(async (session) => {
+      const poNumber = await generateNextSequenceNumber("PO", session);
+      const [newPO] = await PurchaseOrderModel.create(
+        [
+          {
+            poNumber,
+            supplierId: new Types.ObjectId(supplierId),
+            invoiceNumber: invoiceNumber ? String(invoiceNumber).trim() : undefined,
+            orderDate: orderDate ? new Date(orderDate) : new Date(),
+            items: formattedItems,
+            subtotal,
+            tax: taxAmount,
+            shipping: shippingAmount,
+            discount: discountAmount,
+            grandTotal,
+            status,
+            paymentStatus,
+            notes: notes ? String(notes).trim() : undefined,
+            createdById: (req as any).user?._id,
+            receivedDate: status === "RECEIVED" ? new Date() : undefined,
+          },
+        ],
+        { session }
+      );
 
-    const newPO = await PurchaseOrderModel.create({
-      poNumber,
-      supplierId: new Types.ObjectId(supplierId),
-      invoiceNumber: invoiceNumber ? String(invoiceNumber).trim() : undefined,
-      orderDate: orderDate ? new Date(orderDate) : new Date(),
-      items: formattedItems,
-      subtotal,
-      tax: taxAmount,
-      shipping: shippingAmount,
-      discount: discountAmount,
-      grandTotal,
-      status,
-      paymentStatus,
-      notes: notes ? String(notes).trim() : undefined,
-      createdById: (req as any).user?._id,
-      receivedDate: status === "RECEIVED" ? new Date() : undefined,
+      // If created directly in RECEIVED status, process stock inward in same transaction
+      if (status === "RECEIVED") {
+        await processStockInward(formattedItems, poNumber, (req as any).user?._id?.toString(), session);
+      }
+
+      return await PurchaseOrderModel.findById(newPO._id)
+        .populate("supplierId", "name contactPerson phone email")
+        .populate("items.medicineId", "name genericName sku unit")
+        .session(session || null);
     });
-
-    // If created directly in RECEIVED status, process stock inward
-    if (status === "RECEIVED") {
-      await processStockInward(formattedItems, poNumber, (req as any).user?._id?.toString());
-    }
-
-    const populated = await PurchaseOrderModel.findById(newPO._id)
-      .populate("supplierId", "name contactPerson phone email")
-      .populate("items.medicineId", "name genericName sku unit");
 
     res.status(201).json({
       success: true,
@@ -222,41 +244,42 @@ export const createPurchase = async (req: Request, res: Response, next: NextFunc
 export const receivePurchase = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
-    const order = await PurchaseOrderModel.findById(id);
 
-    if (!order) {
-      res.status(404).json({ success: false, message: "Purchase order not found" });
-      return;
-    }
+    const populated = await executeInTransaction(async (session) => {
+      const order = await PurchaseOrderModel.findById(id).session(session || null);
 
-    if (order.status === "RECEIVED") {
-      res.status(400).json({ success: false, message: "This purchase order has already been received" });
-      return;
-    }
+      if (!order) {
+        throw new Error("Purchase order not found");
+      }
 
-    if (order.status === "CANCELLED") {
-      res.status(400).json({ success: false, message: "Cannot receive a cancelled purchase order" });
-      return;
-    }
+      if (order.status === "RECEIVED") {
+        throw new Error("This purchase order has already been received");
+      }
 
-    // Inward stock for all items
-    await processStockInward(order.items, order.poNumber, (req as any).user?._id?.toString());
+      if (order.status === "CANCELLED") {
+        throw new Error("Cannot receive a cancelled purchase order");
+      }
 
-    order.status = "RECEIVED";
-    order.receivedDate = new Date();
-    await order.save();
+      // Inward stock for all items within transaction
+      await processStockInward(order.items, order.poNumber, (req as any).user?._id?.toString(), session);
 
-    const populated = await PurchaseOrderModel.findById(order._id)
-      .populate("supplierId", "name contactPerson phone email")
-      .populate("items.medicineId", "name genericName sku unit");
+      order.status = "RECEIVED";
+      order.receivedDate = new Date();
+      await order.save({ session });
+
+      return await PurchaseOrderModel.findById(order._id)
+        .populate("supplierId", "name contactPerson phone email")
+        .populate("items.medicineId", "name genericName sku unit")
+        .session(session || null);
+    });
 
     res.status(200).json({
       success: true,
       message: "Purchase order received and inventory stock updated",
       data: populated,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Failed to receive purchase" });
   }
 };
 

@@ -6,6 +6,9 @@ import { BatchModel } from "../../database/models/Batch.js";
 import { MedicineModel } from "../../database/models/Medicine.js";
 import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
 
+import { executeInTransaction } from "../../utils/transaction.js";
+import { syncMedicineStockFromBatches } from "../inventory/inventory.service.js";
+
 // --- Branch Management ---
 export const getAllBranches = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -118,161 +121,190 @@ export const createTransfer = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const formattedItems: ITransferItem[] = [];
-
-    // Verify stock availability in source batches
-    for (const it of items) {
-      const batch = await BatchModel.findById(it.batchId);
-      if (!batch) {
-        res.status(404).json({ success: false, message: `Batch not found for item ${it.batchId}` });
-        return;
-      }
-
-      const q = Number(it.quantity);
-      if (q <= 0 || batch.quantity < q) {
-        res.status(400).json({
-          success: false,
-          message: `Insufficient stock in batch ${batch.batchNumber}. Available: ${batch.quantity}, Requested: ${q}`,
-        });
-        return;
-      }
-
-      formattedItems.push({
-        medicineId: batch.medicineId,
-        batchId: batch._id,
-        batchNumber: batch.batchNumber,
-        expiryDate: batch.expiryDate,
-        quantity: q,
-      });
-
-      // Deduct from source batch immediately (put in transit)
-      batch.quantity -= q;
-      if (batch.quantity === 0) batch.status = "DEPLETED";
-      await batch.save();
-
-      // Deduct from medicine stock
-      const med = await MedicineModel.findById(batch.medicineId);
-      if (med) {
-        const beforeStock = Number(med.totalStock) || 0;
-        med.totalStock = Math.max(0, beforeStock - q);
-        await med.save();
-
-        await InventoryTransactionModel.create({
-          medicineId: batch.medicineId,
-          batchId: batch._id,
-          type: "TRANSFER",
-          quantityDelta: -q,
-          beforeQuantity: beforeStock,
-          afterQuantity: med.totalStock,
-          reason: `Stock Transfer Out to branch ${toBranchId}`,
-          userId: (req as any).user?._id,
-        });
-      }
-    }
-
     const transferNumber = `TRF-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
 
-    const transfer = await StockTransferModel.create({
-      transferNumber,
-      fromBranchId: new Types.ObjectId(fromBranchId),
-      toBranchId: new Types.ObjectId(toBranchId),
-      items: formattedItems,
-      status: "DISPATCHED",
-      notes: notes?.trim(),
-      dispatchedBy: (req as any).user?._id,
-      dispatchedAt: new Date(),
-    });
+    const populated = await executeInTransaction(async (session) => {
+      const formattedItems: ITransferItem[] = [];
 
-    const populated = await StockTransferModel.findById(transfer._id)
-      .populate("fromBranchId", "name code")
-      .populate("toBranchId", "name code")
-      .populate("items.medicineId", "name genericName unit");
+      // Verify and deduct stock atomically from source batches (Point 14 & 15)
+      for (const it of items) {
+        const batch = await BatchModel.findById(it.batchId).session(session || null);
+        if (!batch) {
+          throw new Error(`Batch not found for item ${it.batchId}`);
+        }
+
+        const q = Number(it.quantity);
+        if (q <= 0) {
+          throw new Error(`Invalid transfer quantity for batch ${batch.batchNumber}`);
+        }
+
+        // ATOMIC CONDITIONAL STOCK DEDUCTION
+        const updatedBatch = await BatchModel.findOneAndUpdate(
+          {
+            _id: batch._id,
+            status: "ACTIVE",
+            quantity: { $gte: q },
+          },
+          {
+            $inc: { quantity: -q },
+          },
+          { session: session || null, new: true }
+        );
+
+        if (!updatedBatch) {
+          throw new Error(`Insufficient stock in batch ${batch.batchNumber}. Available: ${batch.quantity}, Requested: ${q}`);
+        }
+
+        if (updatedBatch.quantity === 0) {
+          updatedBatch.status = "DEPLETED";
+          await updatedBatch.save({ session });
+        }
+
+        formattedItems.push({
+          medicineId: updatedBatch.medicineId,
+          batchId: updatedBatch._id,
+          batchNumber: updatedBatch.batchNumber,
+          expiryDate: updatedBatch.expiryDate,
+          quantity: q,
+        });
+
+        // Synchronize source Medicine.totalStock in same transaction (Point 16)
+        const newTotalStock = await syncMedicineStockFromBatches(updatedBatch.medicineId.toString(), session);
+
+        await InventoryTransactionModel.create(
+          [
+            {
+              medicineId: updatedBatch.medicineId,
+              batchId: updatedBatch._id,
+              type: "TRANSFER",
+              quantityDelta: -q,
+              beforeQuantity: newTotalStock + q,
+              afterQuantity: newTotalStock,
+              reason: `Stock Transfer Out to branch ${toBranchId}`,
+              userId: (req as any).user?._id,
+            },
+          ],
+          { session }
+        );
+      }
+
+      const [transfer] = await StockTransferModel.create(
+        [
+          {
+            transferNumber,
+            fromBranchId: new Types.ObjectId(fromBranchId),
+            toBranchId: new Types.ObjectId(toBranchId),
+            items: formattedItems,
+            status: "DISPATCHED",
+            notes: notes?.trim(),
+            dispatchedBy: (req as any).user?._id,
+            dispatchedAt: new Date(),
+          },
+        ],
+        { session }
+      );
+
+      return await StockTransferModel.findById(transfer._id)
+        .populate("fromBranchId", "name code")
+        .populate("toBranchId", "name code")
+        .populate("items.medicineId", "name genericName unit")
+        .session(session || null);
+    });
 
     res.status(201).json({
       success: true,
       message: `Transfer ${transferNumber} dispatched successfully. Stock in transit.`,
       data: populated,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Stock transfer failed" });
   }
 };
 
 export const receiveTransfer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
-    const transfer = await StockTransferModel.findById(id);
 
-    if (!transfer) {
-      res.status(404).json({ success: false, message: "Transfer not found" });
-      return;
-    }
+    const populated = await executeInTransaction(async (session) => {
+      const transfer = await StockTransferModel.findById(id).session(session || null);
 
-    if (transfer.status !== "DISPATCHED") {
-      res.status(400).json({
-        success: false,
-        message: `Cannot receive transfer with status: ${transfer.status}`,
-      });
-      return;
-    }
-
-    // Process receiving items into destination inventory
-    for (const it of transfer.items) {
-      let batch = await BatchModel.findOne({
-        medicineId: it.medicineId,
-        batchNumber: it.batchNumber,
-      });
-
-      if (batch) {
-        batch.quantity += it.quantity;
-        if (batch.status === "DEPLETED") batch.status = "ACTIVE";
-        await batch.save();
-      } else {
-        batch = await BatchModel.create({
-          medicineId: it.medicineId,
-          batchNumber: it.batchNumber,
-          expiryDate: it.expiryDate,
-          quantity: it.quantity,
-          initialQuantity: it.quantity,
-          status: "ACTIVE",
-        });
+      if (!transfer) {
+        throw new Error("Transfer not found");
       }
 
-      const med = await MedicineModel.findById(it.medicineId);
-      if (med) {
-        const beforeStock = Number(med.totalStock) || 0;
-        med.totalStock = beforeStock + it.quantity;
-        await med.save();
-
-        await InventoryTransactionModel.create({
-          medicineId: it.medicineId,
-          batchId: batch._id,
-          type: "TRANSFER",
-          quantityDelta: it.quantity,
-          beforeQuantity: beforeStock,
-          afterQuantity: med.totalStock,
-          reason: `Stock Transfer Inward from branch ${transfer.fromBranchId}`,
-          userId: (req as any).user?._id,
-        });
+      if (transfer.status !== "DISPATCHED") {
+        throw new Error(`Cannot receive transfer with status: ${transfer.status}`);
       }
-    }
 
-    transfer.status = "RECEIVED";
-    transfer.receivedAt = new Date();
-    transfer.receivedBy = (req as any).user?._id;
-    await transfer.save();
+      // Process receiving items into destination inventory inside session
+      for (const it of transfer.items) {
+        let batch = await BatchModel.findOne(
+          {
+            medicineId: it.medicineId,
+            batchNumber: it.batchNumber,
+          },
+          null,
+          { session }
+        );
 
-    const populated = await StockTransferModel.findById(transfer._id)
-      .populate("fromBranchId", "name code")
-      .populate("toBranchId", "name code")
-      .populate("items.medicineId", "name genericName unit");
+        if (batch) {
+          batch.quantity += it.quantity;
+          if (batch.status === "DEPLETED") batch.status = "ACTIVE";
+          await batch.save({ session });
+        } else {
+          const [newBatch] = await BatchModel.create(
+            [
+              {
+                medicineId: it.medicineId,
+                batchNumber: it.batchNumber,
+                expiryDate: it.expiryDate,
+                quantity: it.quantity,
+                initialQuantity: it.quantity,
+                status: "ACTIVE",
+              },
+            ],
+            { session }
+          );
+          batch = newBatch;
+        }
+
+        const newTotalStock = await syncMedicineStockFromBatches(it.medicineId.toString(), session);
+
+        await InventoryTransactionModel.create(
+          [
+            {
+              medicineId: it.medicineId,
+              batchId: batch._id,
+              type: "TRANSFER",
+              quantityDelta: it.quantity,
+              beforeQuantity: newTotalStock - it.quantity,
+              afterQuantity: newTotalStock,
+              reason: `Stock Transfer Inward from branch ${transfer.fromBranchId}`,
+              userId: (req as any).user?._id,
+            },
+          ],
+          { session }
+        );
+      }
+
+      transfer.status = "RECEIVED";
+      transfer.receivedAt = new Date();
+      transfer.receivedBy = (req as any).user?._id;
+      await transfer.save({ session });
+
+      return await StockTransferModel.findById(transfer._id)
+        .populate("fromBranchId", "name code")
+        .populate("toBranchId", "name code")
+        .populate("items.medicineId", "name genericName unit")
+        .session(session || null);
+    });
 
     res.status(200).json({
       success: true,
-      message: `Transfer ${transfer.transferNumber} received and credited into inventory`,
+      message: `Transfer ${populated.transferNumber} received and credited into inventory`,
       data: populated,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Failed to receive stock transfer" });
   }
 };

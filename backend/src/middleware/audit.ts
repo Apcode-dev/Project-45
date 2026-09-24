@@ -15,7 +15,7 @@ export const createAuditLog = async (
       action,
       entity,
       entityId: options?.entityId || null,
-      userId: options?.userId || null,
+      userId: options?.userId ? String(options.userId) : null,
       details: options?.details ? JSON.stringify(options.details) : null,
       ipAddress: options?.ipAddress || null,
     });

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { UserModel } from "../../database/models/User.js";
 import { getRolePermissions } from "../auth/auth.types.js";
+import { createAuditLog } from "../../middleware/audit.js";
 
 export const getAllUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -58,6 +59,12 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
     const userObj = user.toObject();
     delete (userObj as any).passwordHash;
 
+    await createAuditLog("CREATE_USER", "USER", {
+      entityId: user._id.toString(),
+      userId: (req as any).user?.id || (req as any).user?._id,
+      details: { email: user.email, role: user.role, status: user.status },
+    });
+
     res.status(201).json({ success: true, data: userObj, message: "User account created successfully" });
   } catch (err) {
     next(err);
@@ -77,10 +84,19 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
 
     if (name) user.name = name.trim();
     if (phone !== undefined) user.phone = phone.trim();
-    if (role) user.role = role;
+    if (role) {
+      user.role = role;
+      user.permissions = getRolePermissions(role);
+    }
     if (status) user.status = status;
 
     await user.save();
+
+    await createAuditLog("UPDATE_USER", "USER", {
+      entityId: user._id.toString(),
+      userId: (req as any).user?.id || (req as any).user?._id,
+      details: { email: user.email, role: user.role, status: user.status },
+    });
 
     const userObj = user.toObject();
     delete (userObj as any).passwordHash;

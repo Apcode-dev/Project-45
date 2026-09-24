@@ -4,7 +4,11 @@ import { SaleModel, ISaleItem } from "../../database/models/Sale.js";
 import { BatchModel } from "../../database/models/Batch.js";
 import { MedicineModel } from "../../database/models/Medicine.js";
 import { InventoryTransactionModel } from "../../database/models/InventoryTransaction.js";
+import { SettingModel } from "../../database/models/Setting.js";
 import { syncInventoryAlerts } from "../alerts/alerts.controller.js";
+import { executeInTransaction } from "../../utils/transaction.js";
+import { syncMedicineStockFromBatches } from "../inventory/inventory.service.js";
+import { generateNextSequenceNumber } from "../../utils/counter.js";
 
 export const getAllSales = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -98,159 +102,166 @@ export const createSale = async (req: Request, res: Response, next: NextFunction
     }
 
     const today = new Date();
-    const processedItems: ISaleItem[] = [];
-    let calculatedSubtotal = 0;
 
-    // Check prescription requirement
-    for (const it of items) {
-      const med = await MedicineModel.findById(it.medicineId);
-      if (!med) {
-        res.status(404).json({ success: false, message: `Medicine not found for ID ${it.medicineId}` });
-        return;
+    const populated = await executeInTransaction(async (session) => {
+      // 1. Check prescription requirement for Rx medicines
+      for (const it of items) {
+        const med = await MedicineModel.findById(it.medicineId).session(session || null);
+        if (!med) {
+          throw new Error(`Medicine not found for ID ${it.medicineId}`);
+        }
+
+        if (med.prescriptionRequired && !prescriptionNumber && !doctorName) {
+          throw new Error(`Medicine '${med.name}' is Schedule H/X Rx and requires Doctor Name & Prescription Number.`);
+        }
       }
 
-      if (med.prescriptionRequired && !prescriptionNumber && !doctorName) {
-        res.status(400).json({
-          success: false,
-          message: `Medicine '${med.name}' is Schedule H/X Rx and requires Doctor Name & Prescription Number.`,
+      const processedItems: ISaleItem[] = [];
+      let calculatedSubtotal = 0;
+
+      // Fetch system settings for FEFO & Hard Expiry Lock (Items 29 & 30)
+      const sysSettings = await SettingModel.findOne().session(session || null);
+      const isFefoEnabled = sysSettings ? sysSettings.FEFO : true;
+      const isHardExpiryLock = sysSettings ? sysSettings.hardExpiryLock : true;
+
+      // 2. Process each item with Atomic Concurrent Stock Deduction (Point 13 & 14)
+      for (const it of items) {
+        const reqQty = Number(it.quantity);
+        if (reqQty <= 0) {
+          throw new Error("Item quantity must be greater than 0");
+        }
+
+        let targetBatch: any = null;
+
+        if (it.batchId) {
+          targetBatch = await BatchModel.findById(it.batchId).session(session || null);
+          if (!targetBatch) {
+            throw new Error(`Selected batch not found`);
+          }
+
+          if (new Date(targetBatch.expiryDate) <= today) {
+            targetBatch.status = "EXPIRED";
+            await targetBatch.save({ session });
+            if (isHardExpiryLock) {
+              throw new Error(`HARD EXPIRY LOCK: Batch ${targetBatch.batchNumber} has EXPIRED. Dispensing blocked at backend level!`);
+            }
+          }
+
+          if (targetBatch.status !== "ACTIVE") {
+            throw new Error(`Batch ${targetBatch.batchNumber} is not active (Status: ${targetBatch.status})`);
+          }
+
+          if (targetBatch.quantity < reqQty) {
+            throw new Error(`Insufficient stock in batch ${targetBatch.batchNumber}. Available: ${targetBatch.quantity}, Requested: ${reqQty}`);
+          }
+        } else {
+          // FEFO vs Standard Stock Selection (Item 29)
+          const sortCondition: any = isFefoEnabled ? { expiryDate: 1 } : { createdAt: 1 };
+          const eligibleBatches = await BatchModel.find({
+            medicineId: it.medicineId,
+            status: "ACTIVE",
+            quantity: { $gte: reqQty },
+            expiryDate: { $gt: today },
+          })
+            .sort(sortCondition)
+            .session(session || null);
+
+          if (eligibleBatches.length === 0) {
+            throw new Error(`No unexpired batch with sufficient stock (${reqQty} units) available for dispensing.`);
+          }
+
+          targetBatch = eligibleBatches[0];
+        }
+
+        // ATOMIC CONCURRENT STOCK DEDUCTION (Point 14)
+        const updatedBatch = await BatchModel.findOneAndUpdate(
+          {
+            _id: targetBatch._id,
+            status: "ACTIVE",
+            quantity: { $gte: reqQty }, // Atomic stock check condition
+          },
+          {
+            $inc: { quantity: -reqQty },
+          },
+          { session: session || null, new: true }
+        );
+
+        if (!updatedBatch) {
+          throw new Error(`CRITICAL CONCURRENT STOCK LOCK: Insufficient stock in batch ${targetBatch.batchNumber}. Stock was claimed by a concurrent sale.`);
+        }
+
+        if (updatedBatch.quantity === 0) {
+          updatedBatch.status = "DEPLETED";
+          await updatedBatch.save({ session });
+        }
+
+        const unitPrice = Number(it.unitPrice || updatedBatch.mrp || 10);
+        const rowTotal = Number((unitPrice * reqQty).toFixed(2));
+        calculatedSubtotal += rowTotal;
+
+        processedItems.push({
+          medicineId: new Types.ObjectId(it.medicineId),
+          batchId: updatedBatch._id,
+          batchNumber: updatedBatch.batchNumber,
+          expiryDate: updatedBatch.expiryDate,
+          quantity: reqQty,
+          unitPrice,
+          total: rowTotal,
         });
-        return;
-      }
-    }
 
-    // Process each item with FEFO allocation
-    for (const it of items) {
-      const reqQty = Number(it.quantity);
-      if (reqQty <= 0) {
-        res.status(400).json({ success: false, message: "Item quantity must be greater than 0" });
-        return;
-      }
+        // Synchronize Medicine.totalStock from actual batch aggregation in same transaction (Point 16)
+        const newTotalStock = await syncMedicineStockFromBatches(it.medicineId, session);
 
-      let batch: any = null;
-
-      if (it.batchId) {
-        batch = await BatchModel.findById(it.batchId);
-        if (!batch) {
-          res.status(404).json({ success: false, message: `Selected batch not found` });
-          return;
-        }
-
-        // Hard-lock check: expired or quarantined batch
-        if (new Date(batch.expiryDate) <= today) {
-          batch.status = "EXPIRED";
-          await batch.save();
-          res.status(400).json({
-            success: false,
-            message: `CRITICAL FEFO SAFETY LOCK: Batch ${batch.batchNumber} has EXPIRED (${new Date(
-              batch.expiryDate
-            ).toLocaleDateString()}). Dispensing blocked!`,
-          });
-          return;
-        }
-
-        if (batch.status !== "ACTIVE") {
-          res.status(400).json({
-            success: false,
-            message: `Batch ${batch.batchNumber} is not active (Status: ${batch.status})`,
-          });
-          return;
-        }
-
-        if (batch.quantity < reqQty) {
-          res.status(400).json({
-            success: false,
-            message: `Insufficient stock in batch ${batch.batchNumber}. Available: ${batch.quantity}, Requested: ${reqQty}`,
-          });
-          return;
-        }
-      } else {
-        // AUTO FEFO ENGINE: Find earliest expiring active batch
-        const eligibleBatches = await BatchModel.find({
-          medicineId: it.medicineId,
-          status: "ACTIVE",
-          quantity: { $gte: reqQty },
-          expiryDate: { $gt: today },
-        }).sort({ expiryDate: 1 });
-
-        if (eligibleBatches.length === 0) {
-          res.status(400).json({
-            success: false,
-            message: `No unexpired batch with sufficient stock (${reqQty} units) available for dispensing.`,
-          });
-          return;
-        }
-
-        batch = eligibleBatches[0];
+        // Log immutable inventory transaction inside session
+        await InventoryTransactionModel.create(
+          [
+            {
+              medicineId: it.medicineId,
+              batchId: updatedBatch._id,
+              type: "SALE",
+              quantityDelta: -reqQty,
+              beforeQuantity: newTotalStock + reqQty,
+              afterQuantity: newTotalStock,
+              reason: `Sale Dispensed to ${customerName || "Walk-in Customer"}`,
+              userId: (req as any).user?._id,
+              notes: `Batch ${updatedBatch.batchNumber}, Unit Price ₹${unitPrice}`,
+            },
+          ],
+          { session }
+        );
       }
 
-      const unitPrice = Number(it.unitPrice || batch.mrp || 10);
-      const rowTotal = Number((unitPrice * reqQty).toFixed(2));
-      calculatedSubtotal += rowTotal;
+      const discountAmount = Number(discount) || 0;
+      const taxAmount = Number(tax) || 0;
+      const grandTotal = Math.max(0, Number((calculatedSubtotal + taxAmount - discountAmount).toFixed(2)));
+      const invoiceNumber = await generateNextSequenceNumber("INV", session);
 
-      processedItems.push({
-        medicineId: new Types.ObjectId(it.medicineId),
-        batchId: batch._id,
-        batchNumber: batch.batchNumber,
-        expiryDate: batch.expiryDate,
-        quantity: reqQty,
-        unitPrice,
-        total: rowTotal,
-      });
+      const [newSale] = await SaleModel.create(
+        [
+          {
+            invoiceNumber,
+            customerName: customerName ? String(customerName).trim() : "Walk-in Customer",
+            customerPhone: customerPhone ? String(customerPhone).trim() : undefined,
+            doctorName: doctorName ? String(doctorName).trim() : undefined,
+            prescriptionNumber: prescriptionNumber ? String(prescriptionNumber).trim() : undefined,
+            items: processedItems,
+            totalAmount: calculatedSubtotal,
+            discount: discountAmount,
+            tax: taxAmount,
+            grandTotal,
+            paymentMethod,
+            status: "COMPLETED",
+            createdBy: (req as any).user?.name || "Pharmacist",
+          },
+        ],
+        { session }
+      );
 
-      // Deduct from batch
-      batch.quantity -= reqQty;
-      if (batch.quantity === 0) {
-        batch.status = "DEPLETED";
-      }
-      await batch.save();
-
-      // Deduct from Medicine totalStock
-      const med = await MedicineModel.findById(it.medicineId);
-      if (med) {
-        const beforeStock = Number(med.totalStock) || 0;
-        med.totalStock = Math.max(0, beforeStock - reqQty);
-        await med.save();
-
-        // Log immutable inventory transaction
-        await InventoryTransactionModel.create({
-          medicineId: it.medicineId,
-          batchId: batch._id,
-          type: "SALE",
-          quantityDelta: -reqQty,
-          beforeQuantity: beforeStock,
-          afterQuantity: med.totalStock,
-          reason: `Sale Dispensed to ${customerName || "Walk-in Customer"}`,
-          userId: (req as any).user?._id,
-          notes: `Batch ${batch.batchNumber}, Unit Price ₹${unitPrice}`,
-        });
-      }
-    }
-
-    const discountAmount = Number(discount) || 0;
-    const taxAmount = Number(tax) || 0;
-    const grandTotal = Math.max(0, Number((calculatedSubtotal + taxAmount - discountAmount).toFixed(2)));
-
-    const invoiceNumber = `INV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    const newSale = await SaleModel.create({
-      invoiceNumber,
-      customerName: customerName ? String(customerName).trim() : "Walk-in Customer",
-      customerPhone: customerPhone ? String(customerPhone).trim() : undefined,
-      doctorName: doctorName ? String(doctorName).trim() : undefined,
-      prescriptionNumber: prescriptionNumber ? String(prescriptionNumber).trim() : undefined,
-      items: processedItems,
-      totalAmount: calculatedSubtotal,
-      discount: discountAmount,
-      tax: taxAmount,
-      grandTotal,
-      paymentMethod,
-      status: "COMPLETED",
-      createdBy: (req as any).user?.name || "Pharmacist",
+      return await SaleModel.findById(newSale._id)
+        .populate("items.medicineId", "name genericName sku unit")
+        .populate("items.batchId", "batchNumber expiryDate")
+        .session(session || null);
     });
-
-    const populated = await SaleModel.findById(newSale._id)
-      .populate("items.medicineId", "name genericName sku unit")
-      .populate("items.batchId", "batchNumber expiryDate");
 
     // Automatically sync inventory alerts in real time
     await syncInventoryAlerts().catch(() => {});
@@ -260,8 +271,8 @@ export const createSale = async (req: Request, res: Response, next: NextFunction
       message: "Sale processed and stock dispensed successfully",
       data: populated,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Sale transaction failed" });
   }
 };
 
@@ -270,70 +281,76 @@ export const returnSale = async (req: Request, res: Response, next: NextFunction
     const { id } = req.params;
     const { reason, restock = true } = req.body;
 
-    const sale = await SaleModel.findById(id);
-    if (!sale) {
-      res.status(404).json({ success: false, message: "Sale not found" });
-      return;
-    }
-
-    if (sale.status === "REFUNDED") {
-      res.status(400).json({ success: false, message: "This sale has already been refunded" });
-      return;
-    }
-
-    // Process reversal for items
-    for (const item of sale.items) {
-      if (restock) {
-        const batch = await BatchModel.findById(item.batchId);
-        if (batch) {
-          batch.quantity += item.quantity;
-          if (batch.status === "DEPLETED") batch.status = "ACTIVE";
-          await batch.save();
-        }
-
-        const med = await MedicineModel.findById(item.medicineId);
-        if (med) {
-          const beforeStock = Number(med.totalStock) || 0;
-          med.totalStock = beforeStock + item.quantity;
-          await med.save();
-
-          await InventoryTransactionModel.create({
-            medicineId: item.medicineId,
-            batchId: item.batchId,
-            type: "RETURN",
-            quantityDelta: item.quantity,
-            beforeQuantity: beforeStock,
-            afterQuantity: med.totalStock,
-            reason: `Sale Return [Invoice ${sale.invoiceNumber}]: ${reason || "Customer Return"}`,
-            userId: (req as any).user?._id,
-          });
-        }
-      } else {
-        // If not restocked, mark as damaged
-        await InventoryTransactionModel.create({
-          medicineId: item.medicineId,
-          batchId: item.batchId,
-          type: "DAMAGE",
-          quantityDelta: 0,
-          beforeQuantity: 0,
-          afterQuantity: 0,
-          reason: `Returned Damaged [Invoice ${sale.invoiceNumber}]: ${reason || "Damaged/Spoiled"}`,
-          userId: (req as any).user?._id,
-        });
+    const updatedSale = await executeInTransaction(async (session) => {
+      const sale = await SaleModel.findById(id).session(session || null);
+      if (!sale) {
+        throw new Error("Sale transaction not found");
       }
-    }
 
-    sale.status = "REFUNDED";
-    await sale.save();
+      if (sale.status === "REFUNDED") {
+        throw new Error("This sale has already been refunded");
+      }
+
+      // Process reversal for items within transaction
+      for (const item of sale.items) {
+        if (restock) {
+          const batch = await BatchModel.findById(item.batchId).session(session || null);
+          if (batch) {
+            batch.quantity += item.quantity;
+            if (batch.status === "DEPLETED") batch.status = "ACTIVE";
+            await batch.save({ session });
+          }
+
+          const newTotalStock = await syncMedicineStockFromBatches(item.medicineId.toString(), session);
+
+          await InventoryTransactionModel.create(
+            [
+              {
+                medicineId: item.medicineId,
+                batchId: item.batchId,
+                type: "RETURN",
+                quantityDelta: item.quantity,
+                beforeQuantity: newTotalStock - item.quantity,
+                afterQuantity: newTotalStock,
+                reason: `Sale Return [Invoice ${sale.invoiceNumber}]: ${reason || "Customer Return"}`,
+                userId: (req as any).user?._id,
+              },
+            ],
+            { session }
+          );
+        } else {
+          // If not restocked, mark as damaged log
+          await InventoryTransactionModel.create(
+            [
+              {
+                medicineId: item.medicineId,
+                batchId: item.batchId,
+                type: "DAMAGE",
+                quantityDelta: 0,
+                beforeQuantity: 0,
+                afterQuantity: 0,
+                reason: `Returned Damaged [Invoice ${sale.invoiceNumber}]: ${reason || "Damaged/Spoiled"}`,
+                userId: (req as any).user?._id,
+              },
+            ],
+            { session }
+          );
+        }
+      }
+
+      sale.status = "REFUNDED";
+      await sale.save({ session });
+      return sale;
+    });
 
     await syncInventoryAlerts().catch(() => {});
 
     res.status(200).json({
       success: true,
-      message: `Sale ${sale.invoiceNumber} refunded and items ${restock ? "restocked into batch" : "discarded as damage"}.`,
-      data: sale,
+      message: `Sale ${updatedSale.invoiceNumber} refunded and items ${restock ? "restocked into batch" : "discarded as damage"}.`,
+      data: updatedSale,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || "Refund transaction failed" });
   }
 };

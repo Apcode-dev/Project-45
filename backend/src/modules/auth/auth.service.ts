@@ -14,15 +14,20 @@ export class AuthService {
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(payload.password, salt);
-    const permissions = getRolePermissions(payload.role);
+
+    // SECURITY FIX (Phase 1 & Phase 4):
+    // Public self-registration ALWAYS forces 'STAFF' role and 'INACTIVE' status (Admin approval flow).
+    // ADMIN must approve/activate the user account.
+    const assignedRole = "STAFF";
+    const permissions = getRolePermissions(assignedRole);
 
     const user = await UserModel.create({
       name: payload.name.trim(),
       email: payload.email.toLowerCase().trim(),
       passwordHash,
-      role: payload.role,
+      role: assignedRole,
       permissions,
-      status: "ACTIVE",
+      status: "INACTIVE", // Pending Admin Approval
     });
 
     const tokenPayload = {
@@ -34,14 +39,14 @@ export class AuthService {
     };
 
     const token = jwt.sign(tokenPayload, ENV.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: (ENV.JWT_EXPIRES_IN || "7d") as any,
     });
 
     await createAuditLog("REGISTER", "USER", {
       entityId: user._id.toString(),
       userId: user._id,
       ipAddress,
-      details: { role: user.role, email: user.email },
+      details: { role: user.role, email: user.email, status: user.status },
     });
 
     return {
@@ -64,7 +69,7 @@ export class AuthService {
     }
 
     if (user.status !== "ACTIVE") {
-      throw new Error("Aapka account inactive ya suspended hai. Kripya Admin se verify karaye.");
+      throw new Error("Aapka account inactive ya approval ke liye pending hai. Kripya Admin se account activate karayein.");
     }
 
     const isMatch = await bcrypt.compare(payload.password, user.passwordHash);
@@ -92,7 +97,7 @@ export class AuthService {
     };
 
     const token = jwt.sign(tokenPayload, ENV.JWT_SECRET, {
-      expiresIn: "7d",
+      expiresIn: (ENV.JWT_EXPIRES_IN || "7d") as any,
     });
 
     // Audit log
@@ -113,6 +118,7 @@ export class AuthService {
         avatar: (user as any).avatar || "",
         role: user.role,
         permissions: user.permissions || [],
+        mustChangePassword: user.mustChangePassword || false,
       },
     };
   }
@@ -132,6 +138,7 @@ export class AuthService {
       avatar: (user as any).avatar || "",
       role: user.role,
       permissions: user.permissions || [],
+      mustChangePassword: user.mustChangePassword || false,
     };
   }
 
@@ -154,13 +161,15 @@ export class AuthService {
     }
 
     if (data.password && data.password.trim()) {
-      if (data.currentPassword) {
-        const isMatch = await bcrypt.compare(data.currentPassword, user.passwordHash);
-        if (!isMatch) {
-          throw new Error("Current password sahi nahi hai. Kripya apna sahi password dalein.");
-        }
+      if (!data.currentPassword) {
+        throw new Error("Purana (current) password daalna zaroori hai naya password set karne ke liye.");
+      }
+      const isMatch = await bcrypt.compare(data.currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new Error("Current password galat hai! Kripya apna sahi password dalein.");
       }
       user.passwordHash = await bcrypt.hash(data.password.trim(), 10);
+      user.mustChangePassword = false; // Mandatory password change completed!
     }
 
     await user.save();
@@ -173,6 +182,7 @@ export class AuthService {
       avatar: (user as any).avatar || "",
       role: user.role,
       permissions: user.permissions || [],
+      mustChangePassword: user.mustChangePassword || false,
     };
   }
 }
