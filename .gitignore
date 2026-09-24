@@ -1,11 +1,17 @@
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
 node_modules/
 **/node_modules/
 dist/
 **/dist/
 build/
 **/build/
-.env
-**/.env
 database/mongo_data/
 *.log
 .DS_Store

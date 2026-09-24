@@ -26,8 +26,8 @@ services:
       - PORT=5001
       - NODE_ENV=production
       - MONGO_URI=mongodb://mongodb:27017/medical_inventory
-      - JWT_SECRET=mis_enterprise_super_secret_jwt_key_2026_!@#$
-      - JWT_EXPIRES_IN=24h
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
     depends_on:
       - mongodb
 
