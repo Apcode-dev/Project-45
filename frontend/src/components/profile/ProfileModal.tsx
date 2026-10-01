@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../../store/authStore.js";
 import { api } from "../../services/api.js";
 import { showToast } from "../../utils/toast.js";
@@ -351,9 +352,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[82vh] sm:max-h-[88vh] flex flex-col min-h-0 shadow-emerald-950/20">
         {/* Modal Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
@@ -375,242 +376,245 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSaveProfile} className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
-          {/* Alerts */}
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start space-x-2.5 animate-in fade-in duration-150">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span className="font-medium">{errorMsg}</span>
-            </div>
-          )}
-
-          {successMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-center space-x-2.5 animate-in fade-in duration-150">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="font-bold">{successMsg}</span>
-            </div>
-          )}
-
-          {/* Current Avatar Preview Banner */}
-          <div className="flex items-center space-x-4 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-            <div className="relative">
-              <UserAvatarDisplay avatar={selectedAvatar} name={name} role={user?.role} size="lg" />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-1 -right-1 p-1 bg-white hover:bg-slate-100 rounded-full border border-slate-300 shadow-xs text-slate-700 transition-transform active:scale-95 cursor-pointer"
-                title="Upload custom image"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-2">
-                <h4 className="font-bold text-slate-900 text-sm truncate">{name || "User"}</h4>
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md shrink-0">
-                  {user?.role || "STAFF"}
-                </span>
+        {/* Form Container */}
+        <form onSubmit={handleSaveProfile} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Scrollable Form Body */}
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 min-h-0">
+            {/* Alerts */}
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start space-x-2.5 animate-in fade-in duration-150">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="font-medium">{errorMsg}</span>
               </div>
-              <p className="text-xs text-slate-500 truncate mt-0.5">{user?.email}</p>
-              <div className="mt-1.5 flex items-center space-x-2 text-[11px] text-emerald-700 font-medium">
-                <Sparkles className="w-3 h-3 text-emerald-600" />
-                <span>Niche profile icon choose karein</span>
+            )}
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-center space-x-2.5 animate-in fade-in duration-150">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-bold">{successMsg}</span>
+              </div>
+            )}
+
+            {/* Current Avatar Preview Banner */}
+            <div className="flex items-center space-x-4 p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
+              <div className="relative">
+                <UserAvatarDisplay avatar={selectedAvatar} name={name} role={user?.role} size="lg" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 p-1 bg-white hover:bg-slate-100 rounded-full border border-slate-300 shadow-xs text-slate-700 transition-transform active:scale-95 cursor-pointer"
+                  title="Upload custom image"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2">
+                  <h4 className="font-bold text-slate-900 text-sm truncate">{name || "User"}</h4>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-md shrink-0">
+                    {user?.role || "STAFF"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 truncate mt-0.5">{user?.email}</p>
+                <div className="mt-1.5 flex items-center space-x-2 text-[11px] text-emerald-700 font-medium">
+                  <Sparkles className="w-3 h-3 text-emerald-600" />
+                  <span>Niche profile icon choose karein</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Hidden File Input for Custom Photo */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleCustomImageUpload}
-          />
+            {/* Hidden File Input for Custom Photo */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleCustomImageUpload}
+            />
 
-          {/* Choose Profile Icon Grid */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700">
-                Choose Profile Icon <span className="text-slate-400 font-normal">(Select an avatar)</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1 cursor-pointer"
-              >
-                <Upload className="w-3 h-3" />
-                <span>Upload Custom Photo</span>
-              </button>
-            </div>
+            {/* Choose Profile Icon Grid */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700">
+                  Choose Profile Icon <span className="text-slate-400 font-normal">(Select an avatar)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center space-x-1 cursor-pointer"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>Upload Custom Photo</span>
+                </button>
+              </div>
 
-            <div className="grid grid-cols-5 sm:grid-cols-5 gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl">
-              {PROFILE_ICONS.map((opt) => {
-                const isSelected = selectedAvatar === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => handleSelectIcon(opt.id)}
-                    className={`relative flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer ${
-                      isSelected
-                        ? "bg-white ring-2 ring-emerald-500 shadow-md scale-105"
-                        : "hover:bg-white/80 hover:shadow-xs opacity-75 hover:opacity-100"
-                    }`}
-                    title={opt.label}
-                  >
-                    <div
-                      className={`w-9 h-9 rounded-xl ${opt.bgClass} ${opt.textClass} flex items-center justify-center shadow-xs border ${opt.borderClass}`}
+              <div className="grid grid-cols-5 sm:grid-cols-5 gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                {PROFILE_ICONS.map((opt) => {
+                  const isSelected = selectedAvatar === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSelectIcon(opt.id)}
+                      className={`relative flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-white ring-2 ring-emerald-500 shadow-md scale-105"
+                          : "hover:bg-white/80 hover:shadow-xs opacity-75 hover:opacity-100"
+                      }`}
+                      title={opt.label}
                     >
-                      {renderAvatarIcon(opt.iconName, "w-4 h-4")}
-                    </div>
-                    <span className="text-[10px] font-semibold text-slate-700 mt-1 truncate max-w-full">
-                      {opt.badge}
-                    </span>
-                    {isSelected && (
-                      <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-emerald-500 text-white rounded-full flex items-center justify-center">
-                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      <div
+                        className={`w-9 h-9 rounded-xl ${opt.bgClass} ${opt.textClass} flex items-center justify-center shadow-xs border ${opt.borderClass}`}
+                      >
+                        {renderAvatarIcon(opt.iconName, "w-4 h-4")}
                       </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Basic User Information Fields */}
-          <div className="space-y-3.5 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Full Name *
-              </label>
-              <div className="relative">
-                <UserIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Aapka Poora Naam"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
-                />
+                      <span className="text-[10px] font-semibold text-slate-700 mt-1 truncate max-w-full">
+                        {opt.badge}
+                      </span>
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-emerald-500 text-white rounded-full flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Email Address <span className="text-slate-400 font-normal">(Hospital login ID)</span>
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                <input
-                  type="email"
-                  disabled
-                  value={user?.email || ""}
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-600 cursor-not-allowed"
-                />
-                <span className="absolute right-3 top-2.5 text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-md">
-                  Verified
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Change Password Collapsible Section */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Lock className="w-4 h-4 text-slate-500" />
-                <span className="text-xs font-bold text-slate-800">Security & Password</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPasswordSection(!showPasswordSection)}
-                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer"
-              >
-                {showPasswordSection ? "Cancel Password Change" : "Change Password"}
-              </button>
-            </div>
-
-            {showPasswordSection && (
-              <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in fade-in duration-200">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Current Password
-                  </label>
+            {/* Basic User Information Fields */}
+            <div className="space-y-3.5 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Full Name *
+                </label>
+                <div className="relative">
+                  <UserIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
                   <input
-                    type={showPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Current password dalein"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Aapka Poora Naam"
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Email Address <span className="text-slate-400 font-normal">(Hospital login ID)</span>
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email"
+                    disabled
+                    value={user?.email || ""}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-600 cursor-not-allowed"
+                  />
+                  <span className="absolute right-3 top-2.5 text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-md">
+                    Verified
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Change Password Collapsible Section */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Lock className="w-4 h-4 text-slate-500" />
+                  <span className="text-xs font-bold text-slate-800">Security & Password</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordSection(!showPasswordSection)}
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer"
+                >
+                  {showPasswordSection ? "Cancel Password Change" : "Change Password"}
+                </button>
+              </div>
+
+              {showPasswordSection && (
+                <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-in fade-in duration-200">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Naya password (min 6 chars)"
-                        className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                      >
-                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Confirm New Password
+                      Current Password
                     </label>
                     <input
                       type={showPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Repeat new password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Current password dalein"
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     />
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        New Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Naya password (min 6 chars)"
+                          className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repeat new password"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Modal Footer Actions */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3 shrink-0">
+          {/* Modal Footer Actions - Pinned at Bottom */}
+          <div className="p-3.5 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end space-x-3 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -634,6 +638,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

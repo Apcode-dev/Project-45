@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api } from "../../services/api.js";
+import { api, API_BASE_URL } from "../../services/api.js";
 import {
   FileBarChart,
   DollarSign,
@@ -78,7 +78,7 @@ export const ReportsPage: React.FC = () => {
 
   // CSV Export Download Trigger
   const handleExportCSV = (type: "valuation" | "sales") => {
-    const downloadUrl = `/api/reports/export/csv?type=${type}`;
+    const downloadUrl = `${API_BASE_URL}/reports/export/csv?type=${type}`;
     const link = document.createElement("a");
     link.href = downloadUrl;
     link.setAttribute("download", `mis_${type}_report.csv`);

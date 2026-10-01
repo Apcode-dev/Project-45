@@ -136,15 +136,25 @@ export const SalesPage: React.FC = () => {
   };
 
   const capturePosCameraFrame = async () => {
-    if (!scannerVideoRef.current) return;
-    const video = scannerVideoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    await recognizePosImageText(canvas);
+    if (scannerVideoRef.current && scannerVideoRef.current.videoWidth > 0 && scannerStreamRef.current) {
+      const video = scannerVideoRef.current;
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        await recognizePosImageText(canvas);
+        return;
+      }
+    }
+
+    // Fallback: Trigger device camera / file input directly so "Snap Photo" ALWAYS opens!
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    } else {
+      showToast.error("Camera frame capture unavailable. Please upload medicine label photo.");
+    }
   };
 
   const handlePosImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,7 +246,11 @@ export const SalesPage: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Aapka browser camera access support nahi karta. Please use Chrome, Safari or Edge.");
+        const isInsecureContext = !window.isSecureContext && location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+        if (isInsecureContext) {
+          throw new Error("Web browsers require HTTPS or localhost for live camera streams. Over HTTP IP connections, please use 'Snap Photo / Upload Label' or access via http://localhost:5173");
+        }
+        throw new Error("Aapka browser camera access support nahi karta. Use 'Snap Photo / Upload Label'.");
       }
 
       let stream: MediaStream;
@@ -300,9 +314,11 @@ export const SalesPage: React.FC = () => {
     } catch (err: any) {
       setScannerLoading(false);
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setScannerError("Camera permission blocked! Browser address bar me Camera icon par click karke 'Allow' karein.");
+        setScannerError("Camera permission blocked! Please allow camera access in app settings or browser permissions.");
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        setScannerError("No camera found on this device. You can enter barcode numbers manually.");
       } else {
-        setScannerError(`Camera open nahi ho paya: ${err.message || err.name}`);
+        setScannerError(`Camera failed to open: ${err.message || err.name || "Unknown error"}`);
       }
     }
   };

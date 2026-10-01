@@ -155,6 +155,17 @@ export class BackupService {
       message: `Data successfully restored from backup '${backupId}'`,
     };
   }
+
+  getBackupFilePath(backupId: string): string {
+    const filename = backupId.endsWith(".json") ? backupId : `${backupId}.json`;
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(BACKUP_DIR, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Backup document '${safeFilename}' not found`);
+    }
+    return filePath;
+  }
 }
 
 export const backupService = new BackupService();

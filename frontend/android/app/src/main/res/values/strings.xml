@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Medical Inventory System</string>
+    <string name="title_activity_main">Medical Inventory System</string>
+    <string name="package_name">com.akash.medicalinventory</string>
+    <string name="custom_url_scheme">com.akash.medicalinventory</string>
+</resources>

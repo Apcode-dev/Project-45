@@ -20,3 +20,10 @@ cloudflared.exe
 backups/
 scratch/
 
+# Android Keystores & Signing Credentials
+*.keystore
+*.jks
+*.pepk
+keystore.properties
+**/keystore.properties
+

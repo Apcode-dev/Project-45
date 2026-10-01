@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import path from "path";
 import { backupService } from "./backup.service.js";
 import { createAuditLog } from "../../middleware/audit.js";
 
@@ -50,5 +51,27 @@ export const restoreBackup = async (req: Request, res: Response, next: NextFunct
     res.status(200).json(result);
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message || "Failed to restore backup" });
+  }
+};
+
+export const downloadBackup = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { backupId } = req.params;
+    if (!backupId) {
+      res.status(400).json({ success: false, message: "Backup ID is required" });
+      return;
+    }
+
+    const backupIdStr = Array.isArray(backupId) ? backupId[0] : backupId;
+    const filePath = backupService.getBackupFilePath(backupIdStr);
+    const fileName = path.basename(filePath);
+
+    res.download(filePath, fileName, (err) => {
+      if (err && !res.headersSent) {
+        res.status(500).json({ success: false, error: "Failed to download backup document." });
+      }
+    });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: err.message || "Backup document not found." });
   }
 };

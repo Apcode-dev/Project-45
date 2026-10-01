@@ -204,9 +204,11 @@ export const InventoryPage: React.FC = () => {
     } catch (err: any) {
       setScannerLoading(false);
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setScannerError("Camera permission blocked! Browser address bar me Camera icon par click karke 'Allow' karein.");
+        setScannerError("Camera permission blocked! Please allow camera access in app settings or browser permissions.");
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        setScannerError("No camera found on this device. You can enter barcode numbers manually.");
       } else {
-        setScannerError(`Camera open nahi ho paya: ${err.message || err.name}`);
+        setScannerError(`Camera failed to open: ${err.message || err.name || "Unknown error"}`);
       }
     }
   };

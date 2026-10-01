@@ -211,7 +211,7 @@ export const AuditPage: React.FC = () => {
                       {log.details || "—"}
                     </td>
                     <td className="py-3 px-4 text-right text-xs font-mono text-slate-400">
-                      {log.ipAddress || "127.0.0.1"}
+                      {log.ipAddress || "Local / Internal"}
                     </td>
                   </tr>
                 ))

@@ -237,7 +237,11 @@ export const ScannerPage: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Aapka browser camera access support nahi karta. Please use Chrome, Edge or Safari.");
+        const isInsecureContext = !window.isSecureContext && location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+        if (isInsecureContext) {
+          throw new Error("Web browsers require HTTPS or localhost for live camera stream. Over HTTP network, please use 'Capture Image / Upload Photo' or access via http://localhost:5173");
+        }
+        throw new Error("Aapka browser live video camera access support nahi karta. Please use Chrome, Edge or Safari, or use 'Capture Image'.");
       }
 
       let stream: MediaStream;
@@ -301,11 +305,11 @@ export const ScannerPage: React.FC = () => {
       setIsCameraActive(false);
       setCameraLoading(false);
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setCameraError("Camera permission blocked! Browser address bar me jaakar Camera permission allow karein.");
+        setCameraError("Camera permission blocked! Please allow camera access in app settings or browser permissions.");
       } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-        setCameraError("Device me camera nahi mila. Aap manual barcode enter kar sakte hain.");
+        setCameraError("No camera found on this device. You can enter barcode numbers manually.");
       } else {
-        setCameraError(`Camera open nahi ho paya: ${err.message || err.name}`);
+        setCameraError(`Camera failed to open: ${err.message || err.name || "Unknown error"}`);
       }
     }
   };
@@ -495,16 +499,25 @@ export const ScannerPage: React.FC = () => {
   };
 
   const captureCameraFrameAndRecognize = async () => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    if (videoRef.current && videoRef.current.videoWidth > 0 && isCameraActive) {
+      const video = videoRef.current;
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        await recognizeImageText(canvas);
+        return;
+      }
+    }
 
-    await recognizeImageText(canvas);
+    // Fallback: Trigger device camera / file input directly so "Capture Image" ALWAYS opens!
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    } else {
+      showToast.error("Camera frame capture unavailable. Please upload medicine label photo.");
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -562,7 +575,14 @@ export const ScannerPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopCamera();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       stopCamera();
     };
   }, []);

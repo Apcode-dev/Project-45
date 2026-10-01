@@ -24,11 +24,16 @@ import "react-toastify/dist/ReactToastify.css";
 import { LayoutDashboard, QrCode, Pill, ShoppingCart, Menu, Boxes, ShieldAlert } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAndroidBackButton } from "./hooks/useAndroidBackButton.js";
+import { useNetworkStatus } from "./hooks/useNetworkStatus.js";
 
 export function App() {
   const { isAuthenticated, user, login, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Monitor online/offline network status
+  useNetworkStatus();
 
   // Derive activeModule from current URL path (/medicines -> medicines)
   const currentPath = location.pathname.replace(/^\//, "") || "dashboard";
@@ -36,6 +41,12 @@ export function App() {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [alertsCount, setAlertsCount] = useState<number>(0);
+
+  // Register Android native back-button handler
+  useAndroidBackButton({
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
+  });
 
   const fetchAlertsCount = async () => {
     try {
