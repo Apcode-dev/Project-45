@@ -42,12 +42,16 @@ app.use(cors({
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-// Health Check
+import mongoose from "mongoose";
+
+// Lightweight Health Check for External Uptime Monitoring (Zero DB Queries, <1ms response)
 app.get("/api/health", (_req, res) => {
+  const isDbConnected = mongoose.connection.readyState === 1;
   res.status(200).json({
     status: "ok",
-    service: "Medical Inventory Management System API (MERN Edition)",
-    database: "MongoDB 7.0 Connected",
+    service: "Medical Inventory Management System API",
+    database: isDbConnected ? "connected" : "disconnected",
+    uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   });
 });
