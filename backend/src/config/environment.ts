@@ -21,6 +21,6 @@ export const ENV = {
   SMTP_PASS: process.env.SMTP_PASS || "",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
   SEED_ADMIN_EMAIL: process.env.SEED_ADMIN_EMAIL || "ap.code.in@gmail.com",
-  SEED_ADMIN_PASSWORD: process.env.SEED_ADMIN_PASSWORD || "Admin@MIS#2026!Secure",
+  SEED_ADMIN_PASSWORD: process.env.SEED_ADMIN_PASSWORD || "apcodein",
   SEED_DEMO_PASSWORD: process.env.SEED_DEMO_PASSWORD || "Demo@MIS#2026!Pass",
 };
