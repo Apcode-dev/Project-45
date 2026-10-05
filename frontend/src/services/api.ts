@@ -29,7 +29,7 @@ export const resolveApiBaseUrl = (): string => {
       (window as any).Capacitor?.isNativePlatform());
 
   if (isCapacitorNative) {
-    return "https://coordinated-identify-colleges-dark.trycloudflare.com/api";
+    return "https://quantum-appearing-keeps-jpeg.trycloudflare.com/api";
   }
 
   return "/api";
@@ -65,9 +65,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 1. Detect No Internet / Offline status
+    // 1. Detect No Internet / Backend Server Connection Failure
     if (!navigator.onLine || error.code === "ERR_NETWORK" || error.message === "Network Error") {
-      const userMsg = "Network Connection Unavailable: Please check your mobile data or Wi-Fi connection.";
+      const userMsg = "Server Connection Failed: Unable to reach Medical Inventory backend server. Please verify internet or Server API URL in ⚙️ Settings.";
       if (error.response) {
         error.response.data = { success: false, error: userMsg };
       } else {

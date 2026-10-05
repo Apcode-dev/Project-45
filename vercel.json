@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://coordinated-identify-colleges-dark.trycloudflare.com/api/$1"
+      "destination": "https://quantum-appearing-keeps-jpeg.trycloudflare.com/api/$1"
     },
     {
       "source": "/(.*)",
