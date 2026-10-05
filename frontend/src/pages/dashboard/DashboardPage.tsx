@@ -112,6 +112,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     }
   };
 
+  if (loading && !stats) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-emerald-600/10 text-emerald-600 flex items-center justify-center animate-spin">
+          <RefreshCw className="w-6 h-6" />
+        </div>
+        <p className="text-sm font-semibold text-slate-600">Loading Medical Stock Dashboard...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Quick Actions */}
@@ -198,7 +209,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              {stats?.kpis.totalMedicines ?? "--"}
+              {stats?.kpis?.totalMedicines ?? "--"}
             </div>
             <div className="text-xs text-slate-500 mt-1 flex items-center space-x-1">
               <span className="text-teal-600 font-bold">Catalog items</span>
@@ -222,7 +233,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              {stats?.kpis.totalStock?.toLocaleString("en-IN") ?? "--"}
+              {stats?.kpis?.totalStock?.toLocaleString("en-IN") ?? "--"}
             </div>
             <div className="text-xs text-slate-500 mt-1 flex items-center space-x-1">
               <span className="text-emerald-600 font-bold">Units / Strips</span>
@@ -246,8 +257,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-extrabold text-amber-700 tracking-tight flex items-center space-x-2">
-              <span>{stats?.kpis.lowStock ?? "--"}</span>
-              {(stats?.kpis.lowStock || 0) > 0 && (
+              <span>{stats?.kpis?.lowStock ?? "--"}</span>
+              {(stats?.kpis?.lowStock || 0) > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
                   Reorder!
                 </span>
@@ -274,8 +285,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
           <div className="mt-3">
             <div className="text-3xl font-extrabold text-rose-700 tracking-tight flex items-center space-x-2">
-              <span>{stats?.kpis.expiringSoon ?? "--"}</span>
-              {(stats?.kpis.expiringSoon || 0) > 0 && (
+              <span>{stats?.kpis?.expiringSoon ?? "--"}</span>
+              {(stats?.kpis?.expiringSoon || 0) > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-900 animate-pulse">
                   Sell First
                 </span>
@@ -294,7 +305,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase">Expired Batches</span>
             <div className="text-xl font-bold text-rose-600 mt-0.5">
-              {stats?.kpis.expiredBatches ?? 0}
+              {stats?.kpis?.expiredBatches ?? 0}
             </div>
             <span className="text-[10px] text-slate-400">Locked from sales</span>
           </div>
@@ -307,7 +318,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase">Out of Stock</span>
             <div className="text-xl font-bold text-slate-800 mt-0.5">
-              {stats?.kpis.outOfStock ?? 0}
+              {stats?.kpis?.outOfStock ?? 0}
             </div>
             <span className="text-[10px] text-slate-400">Zero inventory</span>
           </div>
@@ -320,9 +331,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase">Today's Sales</span>
             <div className="text-xl font-bold text-emerald-600 mt-0.5">
-              {formatCurrency(stats?.kpis.todaysSales || 0)}
+              {formatCurrency(stats?.kpis?.todaysSales || 0)}
             </div>
-            <span className="text-[10px] text-slate-400">{stats?.kpis.salesCount || 0} invoices today</span>
+            <span className="text-[10px] text-slate-400">{stats?.kpis?.salesCount || 0} invoices today</span>
           </div>
           <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <TrendingUp className="w-4 h-4" />
@@ -333,7 +344,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase">Stock Valuation</span>
             <div className="text-xl font-bold text-slate-900 mt-0.5">
-              {formatCurrency(stats?.kpis.stockValue || 0)}
+              {formatCurrency(stats?.kpis?.stockValue || 0)}
             </div>
             <span className="text-[10px] text-slate-400">At purchase cost</span>
           </div>
@@ -361,7 +372,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={stats?.charts.expiryBreakdown || []}
+                  data={stats?.charts?.expiryBreakdown || []}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -370,7 +381,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                   outerRadius={80}
                   paddingAngle={5}
                 >
-                  {(stats?.charts.expiryBreakdown || []).map((entry, index) => (
+                  {(stats?.charts?.expiryBreakdown || []).map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -395,7 +406,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats?.charts.categoryBreakdown || []}>
+              <BarChart data={stats?.charts?.categoryBreakdown || []}>
                 <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
                 <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
                 <Tooltip />
