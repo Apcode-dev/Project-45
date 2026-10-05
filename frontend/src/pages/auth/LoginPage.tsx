@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../../services/api.js";
 import { showToast } from "../../utils/toast.js";
-import { Activity, ShieldCheck, Lock, Mail, Briefcase, ArrowRight, AlertCircle, X, Settings } from "lucide-react";
+import { Activity, ShieldCheck, Lock, Mail, Briefcase, ArrowRight, AlertCircle, X, Settings, ShieldAlert } from "lucide-react";
 import { resolveApiBaseUrl } from "../../services/api.js";
 
 interface LoginPageProps {
