@@ -2,11 +2,44 @@ import axios from "axios";
 import { performLogout } from "../store/authStore.js";
 import { showToast } from "../utils/toast.js";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+export const resolveApiBaseUrl = (): string => {
+  try {
+    const custom = localStorage.getItem("mis_custom_api_url");
+    if (custom && custom.trim()) {
+      let trimmed = custom.trim().replace(/\/+$/, "");
+      if (!trimmed.endsWith("/api") && trimmed.startsWith("http")) {
+        trimmed = `${trimmed}/api`;
+      }
+      return trimmed;
+    }
+  } catch {}
+
+  if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.trim()) {
+    let envUrl = import.meta.env.VITE_API_URL.trim().replace(/\/+$/, "");
+    if (!envUrl.endsWith("/api") && envUrl.startsWith("http")) {
+      envUrl = `${envUrl}/api`;
+    }
+    return envUrl;
+  }
+
+  const isCapacitorNative =
+    typeof window !== "undefined" &&
+    (window.location.protocol === "capacitor:" ||
+      window.location.protocol === "file:" ||
+      (window as any).Capacitor?.isNativePlatform());
+
+  if (isCapacitorNative) {
+    return "https://coordinated-identify-colleges-dark.trycloudflare.com/api";
+  }
+
+  return "/api";
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000, // 15-second request timeout for weak/slow mobile network resilience
+  timeout: 15000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -14,9 +47,10 @@ export const api = axios.create({
 
 let isLoggedOutToastShown = false;
 
-// Request Interceptor: Attach bearer token safely without exposing secrets
+// Request Interceptor: Attach bearer token and dynamically set base URL
 api.interceptors.request.use((config) => {
   try {
+    config.baseURL = resolveApiBaseUrl();
     const token = localStorage.getItem("mis_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

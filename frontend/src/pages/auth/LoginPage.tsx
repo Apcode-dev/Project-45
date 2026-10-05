@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { api } from "../../services/api.js";
 import { showToast } from "../../utils/toast.js";
-import { Activity, ShieldCheck, Lock, Mail, Briefcase, ArrowRight, AlertCircle, X, ShieldAlert } from "lucide-react";
+import { Activity, ShieldCheck, Lock, Mail, Briefcase, ArrowRight, AlertCircle, X, Settings } from "lucide-react";
+import { resolveApiBaseUrl } from "../../services/api.js";
 
 interface LoginPageProps {
   onLoginSuccess: (user: any, token: string) => void;
@@ -17,6 +18,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   // Verification popup modal state
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
+
+  // Server API Host modal state
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [customServerUrl, setCustomServerUrl] = useState(() => localStorage.getItem("mis_custom_api_url") || "");
+
+  const handleSaveServerUrl = () => {
+    if (customServerUrl.trim()) {
+      localStorage.setItem("mis_custom_api_url", customServerUrl.trim());
+      showToast.success("Server API URL updated!");
+    } else {
+      localStorage.removeItem("mis_custom_api_url");
+      showToast.info("Reset to default Server API URL.");
+    }
+    setShowServerModal(false);
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,11 +143,77 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 Select your assigned role and enter credentials
               </p>
             </div>
-            <div className="flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-semibold text-emerald-700">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>RBAC Secured</span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowServerModal(true)}
+                title="Server API Settings"
+                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <div className="flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-semibold text-emerald-700">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>RBAC Secured</span>
+              </div>
             </div>
           </div>
+
+          {/* Server Settings Modal */}
+          {showServerModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center space-x-2">
+                    <Settings className="w-5 h-5 text-emerald-600" />
+                    <h3 className="font-bold text-slate-900 text-base">Server API Settings</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowServerModal(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Backend API Host / URL
+                  </label>
+                  <input
+                    type="url"
+                    value={customServerUrl}
+                    onChange={(e) => setCustomServerUrl(e.target.value)}
+                    placeholder="e.g. https://pharmacy-mis.onrender.com/api"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Current active base URL: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-emerald-700">{resolveApiBaseUrl()}</code>
+                  </p>
+                </div>
+                <div className="flex items-center justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomServerUrl("");
+                      localStorage.removeItem("mis_custom_api_url");
+                      showToast.info("Reset to default server URL.");
+                      setShowServerModal(false);
+                    }}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                  >
+                    Reset Default
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveServerUrl}
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
+                  >
+                    Save URL
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start space-x-2">

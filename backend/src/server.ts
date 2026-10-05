@@ -27,22 +27,28 @@ import backupRoutes from "./modules/system/backup.routes.js";
 
 const app = express();
 
-// Middleware (PHASE 14 - CORS Fix)
-const allowedOrigins = [ENV.CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000"].filter(Boolean);
+// Middleware - Universal CORS for Web, Vercel & Mobile Apps
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== "production") {
-      callback(null, true);
-    } else {
-      callback(new Error("CORS policy blocked this request"));
-    }
-  },
+  origin: true,
   credentials: true,
 }));
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
 import mongoose from "mongoose";
+
+// Auto DB Connection Guard Middleware
+app.use(async (_req, _res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    try {
+      await connectDatabase();
+    } catch (err) {
+      console.error("[Database] Auto-reconnect failed:", err);
+    }
+  }
+  next();
+});
+
 
 // Lightweight Health Check for External Uptime Monitoring (Zero DB Queries, <1ms response)
 app.get("/api/health", (_req, res) => {
