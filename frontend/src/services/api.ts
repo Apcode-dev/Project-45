@@ -29,11 +29,10 @@ export const resolveApiBaseUrl = (): string => {
       (window as any).Capacitor?.isNativePlatform());
 
   if (isCapacitorNative) {
-    // Default mobile connection: Wi-Fi Local Network IP or Custom Configured Server URL
-    return "http://10.93.198.200:5001/api";
+    return "https://project-45-11uq.onrender.com/api";
   }
 
-  return "/api";
+  return "https://project-45-11uq.onrender.com/api";
 };
 
 export const API_BASE_URL = resolveApiBaseUrl();

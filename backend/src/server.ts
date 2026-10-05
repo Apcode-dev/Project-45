@@ -87,16 +87,22 @@ app.use(errorHandler);
 
 import { syncInventoryAlerts } from "./modules/alerts/alerts.controller.js";
 
-// Start Server after connecting to MongoDB
-const startServer = async () => {
-  await connectDatabase();
-
-  app.listen(Number(ENV.PORT), "0.0.0.0", () => {
-    console.log(`[MIS API Server] running in ${ENV.NODE_ENV} mode on port ${ENV.PORT}`);
-    console.log(`Health endpoint: http://localhost:${ENV.PORT}/api/health`);
+// Start Server immediately for instant cloud readiness and health checks
+const startServer = () => {
+  const port = Number(ENV.PORT) || 10000;
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`[MIS API Server] running in ${ENV.NODE_ENV} mode on port ${port}`);
+    console.log(`Health endpoint: http://localhost:${port}/api/health`);
     
-    // Immediate initial sync & start 30s background inventory health monitor
-    syncInventoryAlerts().catch(() => {});
+    // Connect to database asynchronously
+    connectDatabase()
+      .then(() => {
+        syncInventoryAlerts().catch(() => {});
+      })
+      .catch((err) => {
+        console.error("[Database] Initial connection background error:", err);
+      });
+
     setInterval(() => {
       syncInventoryAlerts().catch(() => {});
     }, 30000);
