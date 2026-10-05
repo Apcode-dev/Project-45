@@ -123,6 +123,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     );
   }
 
+  if (!stats) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center max-w-md mx-auto mt-8">
+        <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto ring-8 ring-rose-50 shadow-xs">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <div>
+          <h3 className="text-base font-bold text-slate-900">Dashboard Metrics Unavailable</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {error || "Unable to retrieve real-time inventory metrics from the backend server."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={fetchStats}
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center space-x-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Loading Dashboard</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Quick Actions */}
