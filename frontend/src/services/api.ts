@@ -29,7 +29,8 @@ export const resolveApiBaseUrl = (): string => {
       (window as any).Capacitor?.isNativePlatform());
 
   if (isCapacitorNative) {
-    return "https://quantum-appearing-keeps-jpeg.trycloudflare.com/api";
+    // Default mobile connection: Wi-Fi Local Network IP or Custom Configured Server URL
+    return "http://10.93.198.200:5001/api";
   }
 
   return "/api";
@@ -67,7 +68,7 @@ api.interceptors.response.use(
   (error) => {
     // 1. Detect No Internet / Backend Server Connection Failure
     if (!navigator.onLine || error.code === "ERR_NETWORK" || error.message === "Network Error") {
-      const userMsg = "Server Connection Failed: Unable to reach Medical Inventory backend server. Please verify internet or Server API URL in ⚙️ Settings.";
+      const userMsg = "Server Connection Failed: Unable to reach Medical Inventory backend server. Please check IP / Server URL in ⚙️ Settings.";
       if (error.response) {
         error.response.data = { success: false, error: userMsg };
       } else {
@@ -92,16 +93,17 @@ api.interceptors.response.use(
 
     // Authentication Expiration (401 Unauthorized / 403 Forbidden)
     if (status === 401) {
-      if (!isLoggedOutToastShown) {
-        isLoggedOutToastShown = true;
-        showToast.warning("Session Expired: Please sign in again to continue.");
-        setTimeout(() => {
-          isLoggedOutToastShown = false;
-        }, 5000);
+      const isLoginRequest = error.config?.url?.includes("/auth/login");
+      if (!isLoginRequest) {
+        if (!isLoggedOutToastShown) {
+          isLoggedOutToastShown = true;
+          showToast.warning("Session Expired: Please sign in again to continue.");
+          setTimeout(() => {
+            isLoggedOutToastShown = false;
+          }, 5000);
+        }
+        performLogout();
       }
-      performLogout();
-      const userMsg = "Session expired. Please log in again.";
-      error.response.data = { success: false, error: userMsg };
       return Promise.reject(error);
     }
 

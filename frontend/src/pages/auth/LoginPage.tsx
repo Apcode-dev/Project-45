@@ -183,14 +183,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                     type="url"
                     value={customServerUrl}
                     onChange={(e) => setCustomServerUrl(e.target.value)}
-                    placeholder="e.g. https://pharmacy-mis.onrender.com/api"
+                    placeholder="e.g. http://10.93.198.200:5001/api"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <div className="mt-2 space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Quick Presets:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setCustomServerUrl("http://10.93.198.200:5001/api")}
+                        className="px-2 py-1 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 rounded-md text-[11px] font-mono border border-slate-200"
+                      >
+                        📶 Wi-Fi (10.93.198.200)
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-2">
                     Current active base URL: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-emerald-700">{resolveApiBaseUrl()}</code>
                   </p>
                 </div>
-                <div className="flex items-center justify-end space-x-2 pt-2">
+                <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => {
