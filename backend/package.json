@@ -1,6 +1,7 @@
 {
   "name": "mis-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Medical Inventory Management System Backend",
   "main": "dist/server.js",
   "scripts": {
