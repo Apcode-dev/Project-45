@@ -37,19 +37,6 @@ app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
 import mongoose from "mongoose";
 
-// Auto DB Connection Guard Middleware
-app.use(async (_req, _res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    try {
-      await connectDatabase();
-    } catch (err) {
-      console.error("[Database] Auto-reconnect failed:", err);
-    }
-  }
-  next();
-});
-
-
 // Lightweight Health Check for External Uptime Monitoring (Zero DB Queries, <1ms response)
 app.get("/api/health", (_req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
@@ -60,6 +47,14 @@ app.get("/api/health", (_req, res) => {
     uptimeSeconds: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   });
+});
+
+// Auto DB Connection Guard Middleware (Non-blocking for API routes)
+app.use((_req, _res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    connectDatabase().catch((err) => console.error("[Database] Auto-reconnect failed:", err));
+  }
+  next();
 });
 
 // Mount Routes
