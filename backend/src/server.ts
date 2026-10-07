@@ -49,10 +49,16 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// Auto DB Connection Guard Middleware (Non-blocking for API routes)
+// Auto DB Connection Guard Middleware (Safely guarded non-blocking reconnect)
+let isConnectingDb = false;
 app.use((_req, _res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    connectDatabase().catch((err) => console.error("[Database] Auto-reconnect failed:", err));
+  if (mongoose.connection.readyState === 0 && !isConnectingDb) {
+    isConnectingDb = true;
+    connectDatabase()
+      .catch((err) => console.error("[Database] Auto-reconnect failed:", err))
+      .finally(() => {
+        isConnectingDb = false;
+      });
   }
   next();
 });
