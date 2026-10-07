@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://quantum-appearing-keeps-jpeg.trycloudflare.com/api/$1"
+      "destination": "https://project-45-11uq.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
